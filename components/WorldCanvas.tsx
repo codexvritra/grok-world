@@ -508,7 +508,10 @@ export default function WorldCanvas({
           const dy = (u.destY ?? u.simY) - u.simY;
           const dist = Math.hypot(dx, dy);
           const step = WALK_SPEED_MPS * dt;
-          if (dist > 0.05) u.facing = Math.atan2(dy, dx);
+          // local +Z is the character's "front" (that's where the eyes sit),
+          // so facing needs atan2(dx, -dy) here, not atan2(dy, dx) — that
+          // formula is for aligning an object's local +X (e.g. a fence rail).
+          if (dist > 0.05) u.facing = Math.atan2(dx, -dy);
           if (dist > step) {
             u.simX += (dx / dist) * step;
             u.simY += (dy / dist) * step;
@@ -519,10 +522,14 @@ export default function WorldCanvas({
         }
         group.position.set(u.simX ?? 0, 0, -(u.simY ?? 0));
 
+        // ease the walk blend in/out so starting or stopping never pops, and
+        // keep the bob small — it's a subtle step wobble, not a hop
+        const walkTarget = u.walking ? 1 : 0;
+        u.walkBlend = (u.walkBlend ?? 0) + (walkTarget - (u.walkBlend ?? 0)) * Math.min(1, dt * 8);
         const characterRoot = u.characterRoot as THREE.Object3D | undefined;
         if (characterRoot) {
-          characterRoot.position.y = u.walking ? Math.sin(t / 150 + (u.seed ?? 0)) * 0.35 : 0;
-          characterRoot.rotation.y = u.facing ?? characterRoot.rotation.y;
+          characterRoot.position.y = Math.sin(t / 130 + (u.seed ?? 0)) * 0.12 * u.walkBlend;
+          if (u.facing !== undefined) characterRoot.rotation.y = u.facing;
         }
       }
 
