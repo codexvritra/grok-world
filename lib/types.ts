@@ -28,6 +28,7 @@ export interface Agent {
   intent: string;
   targetX: number | null;
   targetY: number | null;
+  waypoints: [number, number][];
   inventory: Inventory;
   life: Life;
   contributions: number;

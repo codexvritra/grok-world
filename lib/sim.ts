@@ -17,6 +17,7 @@ import type { Agent, FarmBed, Plot } from './types';
 import { PIECE_COST } from './types';
 import { generatePlaceName } from './names';
 import { TICK_MS, WALK_SPEED } from './simConstants';
+import { findRoute } from './pathfinding';
 
 export { TICK_MS };
 const ARRIVE_EPS = 1.5;
@@ -50,8 +51,11 @@ function clamp(v: number, lo: number, hi: number) {
 }
 
 function setWalk(agent: Agent, target: { x: number; y: number }, intent: string, actionLabel: string, place: string) {
-  agent.targetX = target.x;
-  agent.targetY = target.y;
+  const route = findRoute({ x: agent.x, y: agent.y }, target);
+  const [first, ...rest] = route;
+  agent.targetX = first[0];
+  agent.targetY = first[1];
+  agent.waypoints = rest;
   agent.status = 'walking';
   agent.action = actionLabel;
   agent.intent = intent;
@@ -142,6 +146,7 @@ async function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[
   const [kind, ...rest] = agent.intent.split(':');
   agent.targetX = null;
   agent.targetY = null;
+  agent.waypoints = [];
 
   switch (kind) {
     case 'rest': {
@@ -311,7 +316,17 @@ export async function tick(): Promise<void> {
     if (agent.targetX !== null && agent.targetY !== null) {
       const d = dist(agent.x, agent.y, agent.targetX, agent.targetY);
       if (d <= ARRIVE_EPS) {
-        await resolveArrival(agent, { beds, plots });
+        if (agent.waypoints.length > 0) {
+          // reached a waypoint along the road, not the final destination yet
+          const [next, ...rest] = agent.waypoints;
+          agent.x = agent.targetX;
+          agent.y = agent.targetY;
+          agent.targetX = next[0];
+          agent.targetY = next[1];
+          agent.waypoints = rest;
+        } else {
+          await resolveArrival(agent, { beds, plots });
+        }
       } else {
         const step = Math.min(WALK_SPEED, d);
         agent.x += ((agent.targetX - agent.x) / d) * step;

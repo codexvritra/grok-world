@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS agents (
   intent TEXT NOT NULL DEFAULT '',
   target_x REAL,
   target_y REAL,
+  waypoints TEXT NOT NULL DEFAULT '[]',
   inventory TEXT NOT NULL,
   life TEXT NOT NULL,
   contributions REAL NOT NULL DEFAULT 0,
@@ -135,6 +136,7 @@ CREATE TABLE IF NOT EXISTS idempotency (
         // volume) — patch those in by hand, ignoring "already there".
         db.execute('ALTER TABLE goal ADD COLUMN last_tick_at INTEGER NOT NULL DEFAULT 0').catch(() => undefined)
       )
+      .then(() => db.execute("ALTER TABLE agents ADD COLUMN waypoints TEXT NOT NULL DEFAULT '[]'").catch(() => undefined))
       .then(() => undefined);
   }
   return g.__grokDbInit;
@@ -157,6 +159,7 @@ function rowToAgent(r: any): Agent {
     intent: r.intent,
     targetX: r.target_x,
     targetY: r.target_y,
+    waypoints: r.waypoints ? JSON.parse(r.waypoints) : [],
     inventory: JSON.parse(r.inventory),
     life: JSON.parse(r.life),
     contributions: r.contributions,
@@ -182,10 +185,11 @@ export async function getAgentById(id: string): Promise<Agent | undefined> {
 export async function insertAgent(a: Agent): Promise<void> {
   await ensureInit();
   await db.execute({
-    sql: `INSERT INTO agents (id,name,role,public_key,source,x,y,place,status,action,intent,target_x,target_y,inventory,life,contributions,friends,paused,last_action_at,created_at)
-     VALUES (@id,@name,@role,@publicKey,@source,@x,@y,@place,@status,@action,@intent,@targetX,@targetY,@inventory,@life,@contributions,@friends,@paused,@lastActionAt,@createdAt)`,
+    sql: `INSERT INTO agents (id,name,role,public_key,source,x,y,place,status,action,intent,target_x,target_y,waypoints,inventory,life,contributions,friends,paused,last_action_at,created_at)
+     VALUES (@id,@name,@role,@publicKey,@source,@x,@y,@place,@status,@action,@intent,@targetX,@targetY,@waypoints,@inventory,@life,@contributions,@friends,@paused,@lastActionAt,@createdAt)`,
     args: {
       ...a,
+      waypoints: JSON.stringify(a.waypoints),
       inventory: JSON.stringify(a.inventory),
       life: JSON.stringify(a.life),
       friends: JSON.stringify(a.friends),
@@ -198,7 +202,7 @@ export async function saveAgent(a: Agent): Promise<void> {
   await ensureInit();
   await db.execute({
     sql: `UPDATE agents SET name=@name, role=@role, x=@x, y=@y, place=@place, status=@status, action=@action, intent=@intent,
-     target_x=@targetX, target_y=@targetY, inventory=@inventory, life=@life, contributions=@contributions,
+     target_x=@targetX, target_y=@targetY, waypoints=@waypoints, inventory=@inventory, life=@life, contributions=@contributions,
      friends=@friends, paused=@paused, last_action_at=@lastActionAt WHERE id=@id`,
     args: {
       id: a.id,
@@ -212,6 +216,7 @@ export async function saveAgent(a: Agent): Promise<void> {
       intent: a.intent,
       targetX: a.targetX,
       targetY: a.targetY,
+      waypoints: JSON.stringify(a.waypoints),
       inventory: JSON.stringify(a.inventory),
       life: JSON.stringify(a.life),
       contributions: a.contributions,

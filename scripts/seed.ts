@@ -120,6 +120,7 @@ async function seedAgents(): Promise<string[]> {
       intent: '',
       targetX: null,
       targetY: null,
+      waypoints: [],
       inventory: defaultInventory(),
       life: defaultLife(),
       contributions: 0,

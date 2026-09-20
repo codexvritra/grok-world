@@ -56,6 +56,7 @@ export async function POST(req: Request) {
     intent: '',
     targetX: null,
     targetY: null,
+    waypoints: [],
     inventory: defaultInventory(),
     life: defaultLife(),
     contributions: 0,
