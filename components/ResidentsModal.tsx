@@ -18,7 +18,17 @@ function LifeBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function ResidentsModal({ agents, onClose }: { agents: AgentDTO[]; onClose: () => void }) {
+export default function ResidentsModal({
+  agents,
+  following,
+  onToggleFollow,
+  onClose
+}: {
+  agents: AgentDTO[];
+  following: string[];
+  onToggleFollow: (id: string) => void;
+  onClose: () => void;
+}) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
@@ -52,9 +62,23 @@ export default function ResidentsModal({ agents, onClose }: { agents: AgentDTO[]
                 <LifeBar label="energy" value={a.life.energy} />
                 <LifeBar label="nourishment" value={a.life.nourishment} />
                 <LifeBar label="companionship" value={a.life.companionship} />
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, marginBottom: 10 }}>
                   timber {a.inventory.timber} · pollen {a.inventory.pollen} · sand {a.inventory.sand} · produce {a.inventory.produce}
                 </div>
+                <button
+                  onClick={() => onToggleFollow(a.id)}
+                  style={{
+                    border: '1px solid var(--card-border)',
+                    background: following.includes(a.id) ? 'var(--bg)' : 'none',
+                    borderRadius: 999,
+                    padding: '6px 14px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: 'var(--text)'
+                  }}
+                >
+                  {following.includes(a.id) ? '♥ Following' : '♡ Follow'}
+                </button>
               </div>
             )}
           </div>

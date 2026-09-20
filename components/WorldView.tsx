@@ -8,10 +8,12 @@ import ControlCluster from './ControlCluster';
 import IslandMomentToast from './IslandMomentToast';
 import BottomBar from './BottomBar';
 import TabBar, { type TabKey } from './TabBar';
-import ComingSoonPanel from './ComingSoonPanel';
 import ResidentsModal from './ResidentsModal';
 import PlacesModal from './PlacesModal';
 import JournalModal from './JournalModal';
+import FollowingPanel from './FollowingPanel';
+import StoriesPanel from './StoriesPanel';
+import { useFollowing } from '@/lib/useFollowing';
 import type { StateResponse, JournalEventDTO, LocationDTO, PlotDTO } from '@/lib/clientTypes';
 
 function getSessionId(): string {
@@ -38,6 +40,7 @@ export default function WorldView() {
   const [activeTab, setActiveTab] = useState<TabKey>('island');
   const startedAt = useRef(Date.now());
   const canvasRef = useRef<WorldCanvasHandle>(null);
+  const { following, toggle: toggleFollow } = useFollowing();
 
   useEffect(() => {
     fetch('/api/buildings')
@@ -159,6 +162,21 @@ export default function WorldView() {
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>{selectedAgent.role}</div>
             <div style={{ fontSize: 12, marginTop: 4 }}>{selectedAgent.action}</div>
+            <button
+              onClick={() => toggleFollow(selectedAgent.id)}
+              style={{
+                marginTop: 8,
+                border: '1px solid var(--card-border)',
+                background: following.includes(selectedAgent.id) ? 'var(--bg)' : 'none',
+                borderRadius: 999,
+                padding: '5px 12px',
+                fontSize: 11,
+                fontWeight: 700,
+                color: 'var(--text)'
+              }}
+            >
+              {following.includes(selectedAgent.id) ? '♥ Following' : '♡ Follow'}
+            </button>
           </div>
         )}
 
@@ -178,7 +196,9 @@ export default function WorldView() {
         )}
       </div>
 
-      {modal === 'residents' && <ResidentsModal agents={state?.agents ?? []} onClose={() => setModal(null)} />}
+      {modal === 'residents' && (
+        <ResidentsModal agents={state?.agents ?? []} following={following} onToggleFollow={toggleFollow} onClose={() => setModal(null)} />
+      )}
       {modal === 'places' && <PlacesModal plots={plots} agents={state?.agents ?? []} onClose={() => setModal(null)} />}
       {modal === 'journal' && (
         <JournalModal
@@ -190,19 +210,14 @@ export default function WorldView() {
         />
       )}
       {activeTab === 'following' && (
-        <ComingSoonPanel
-          title="Following"
-          description="Follow specific Sparks to keep a closer eye on their story as it unfolds. Coming soon."
+        <FollowingPanel
+          agents={state?.agents ?? []}
+          following={following}
+          onToggle={toggleFollow}
           onClose={() => setActiveTab('island')}
         />
       )}
-      {activeTab === 'stories' && (
-        <ComingSoonPanel
-          title="Stories"
-          description="Narrative digests of what's been happening on the island, written up from the journal. Coming soon."
-          onClose={() => setActiveTab('island')}
-        />
-      )}
+      {activeTab === 'stories' && <StoriesPanel onClose={() => setActiveTab('island')} />}
     </div>
   );
 }
