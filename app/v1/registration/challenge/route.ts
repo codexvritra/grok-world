@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { randomNonce } from '@/lib/crypto';
 import { issueChallengeNonce } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const nonce = randomNonce();
   issueChallengeNonce(nonce);

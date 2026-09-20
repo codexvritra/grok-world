@@ -5,6 +5,8 @@ import { getAgentById, saveAgent, isNonceUsed, recordNonce, getIdempotentResult,
 import { runTool, ToolError, READ_ONLY_TOOLS } from '@/lib/tools';
 import { canAct } from '@/lib/pacing';
 
+export const dynamic = 'force-dynamic';
+
 const MAX_SKEW_MS = 5 * 60 * 1000;
 
 function fail(status: number, error: string, extra?: Record<string, unknown>) {

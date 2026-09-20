@@ -4,6 +4,8 @@ import { ROLES } from '@/lib/types';
 import { ACTION_INTERVAL_MS } from '@/lib/pacing';
 import { TOOL_NAMES } from '@/lib/tools';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const loc = loadLocation();
   return NextResponse.json({

@@ -6,6 +6,8 @@ import { ROLES } from '@/lib/types';
 import type { Agent } from '@/lib/types';
 import { LANDMARKS } from '@/lib/sim';
 
+export const dynamic = 'force-dynamic';
+
 const MAX_EXTERNAL_AGENTS = 200;
 
 export async function POST(req: Request) {

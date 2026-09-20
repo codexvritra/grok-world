@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getPlots } from '@/lib/db';
 import { PIECE_COST } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   return NextResponse.json({
     plots: getPlots(),

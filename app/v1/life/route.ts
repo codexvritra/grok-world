@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getFarmBeds, getKitchen } from '@/lib/db';
 import { ROLES, PIECE_COST } from '@/lib/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   return NextResponse.json({
     farm: getFarmBeds(),
