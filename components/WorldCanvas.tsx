@@ -128,6 +128,26 @@ function buildGableRoofGeometry(w: number, d: number, height: number, overhang =
   return geometry;
 }
 
+/** Simple 4-sided pyramid hip roof: base rectangle w x d, apex centered above. */
+function buildHipRoofGeometry(w: number, d: number, height: number, overhang = 0.5): THREE.BufferGeometry {
+  const hw = w / 2 + overhang;
+  const hd = d / 2 + overhang;
+  const positions = [-hw, 0, -hd, hw, 0, -hd, hw, 0, hd, -hw, 0, hd, 0, height, 0];
+  const index = [0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** Flat roof: a thin slab sitting on top of the walls, base at local y=0. */
+function buildFlatRoofGeometry(w: number, d: number, thickness = 0.4, overhang = 0.5): THREE.BufferGeometry {
+  const geometry = new THREE.BoxGeometry(w + overhang * 2, thickness, d + overhang * 2);
+  geometry.translate(0, thickness / 2, 0);
+  return geometry;
+}
+
 const WINDOW_GLASS = 0xbfe3e6;
 const WINDOW_FRAME = 0x5a4632;
 const DOOR_PANEL = 0x6b4a34;
@@ -377,6 +397,15 @@ export default function WorldCanvas({
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const sunRef = useRef<THREE.DirectionalLight>();
   const hemiRef = useRef<THREE.HemisphereLight>();
+  const lampLightsRef = useRef<THREE.PointLight[]>([]);
+  const lampHeadsRef = useRef<THREE.Mesh[]>([]);
+  const lightTargetRef = useRef({
+    sunIntensity: 1.5,
+    hemiIntensity: 0.75,
+    sunColor: new THREE.Color(0xfff0d0),
+    bg: new THREE.Color(0xbfe3ea),
+    lampIntensity: 0
+  });
   const agentMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const plotAnchorsRef = useRef<Map<string, THREE.Vector3>>(new Map());
   const plotInfoRef = useRef<Map<string, { name: string; icon: string }>>(new Map());
@@ -422,8 +451,10 @@ export default function WorldCanvas({
     // Capped conservatively: a high pixel-ratio cap combined with a large
     // shadow map can exceed GPU memory/texture limits on weaker hardware and
     // kill the WebGL context outright (canvas goes blank), which is a much
-    // worse failure mode than a slightly softer image.
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // worse failure mode than a slightly softer image. Mobile/touch devices
+    // get an extra-conservative cap since they tend to have less GPU memory.
+    const isCoarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isCoarsePointer ? 1.5 : 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -433,6 +464,9 @@ export default function WorldCanvas({
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
+    // Ask the GPU what it can actually handle rather than assuming — a
+    // hard-coded 2048 can still be too much for very old/integrated GPUs.
+    const shadowMapSize = Math.min(2048, renderer.capabilities.maxTextureSize || 2048);
 
     const hemi = new THREE.HemisphereLight(0xfff3d9, 0x9fc7b8, 0.75);
     scene.add(hemi);
@@ -441,7 +475,7 @@ export default function WorldCanvas({
     const sun = new THREE.DirectionalLight(0xfff0d0, 1.5);
     sun.position.set(140, 170, 80);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(shadowMapSize, shadowMapSize);
     sun.shadow.camera.left = -230;
     sun.shadow.camera.right = 230;
     sun.shadow.camera.top = 230;
@@ -532,14 +566,40 @@ export default function WorldCanvas({
         u.walkBlend = (u.walkBlend ?? 0) + (walkTarget - (u.walkBlend ?? 0)) * Math.min(1, dt * 8);
         const characterRoot = u.characterRoot as THREE.Object3D | undefined;
         if (characterRoot) {
-          characterRoot.position.y = Math.sin(t / 130 + (u.seed ?? 0)) * 0.12 * u.walkBlend;
+          const phase = t / 130 + (u.seed ?? 0);
+          characterRoot.position.y = Math.sin(phase) * 0.1 * u.walkBlend;
           if (u.facing !== undefined) characterRoot.rotation.y = u.facing;
+
+          const swing = Math.sin(phase) * 0.55 * u.walkBlend;
+          const armSwing = Math.sin(phase) * 0.4 * u.walkBlend;
+          if (u.legL) u.legL.rotation.x = swing;
+          if (u.legR) u.legR.rotation.x = -swing;
+          if (u.armL) u.armL.rotation.x = -armSwing;
+          if (u.armR) u.armR.rotation.x = armSwing;
         }
       }
 
       for (const cloud of cloudGroup.children) {
         cloud.position.x += (cloud.userData.driftSpeed ?? 1) * dt;
         if (cloud.position.x > 320) cloud.position.x = -320;
+      }
+
+      // gently fade lighting/background toward the current day-night target
+      // instead of snapping, so sunrise/sunset reads as a transition
+      if (dt > 0) {
+        const target = lightTargetRef.current;
+        const fade = Math.min(1, dt * 0.6);
+        sun.intensity += (target.sunIntensity - sun.intensity) * fade;
+        sun.color.lerp(target.sunColor, fade);
+        hemi.intensity += (target.hemiIntensity - hemi.intensity) * fade;
+        (scene.background as THREE.Color).lerp(target.bg, fade);
+        for (const light of lampLightsRef.current) {
+          light.intensity += (target.lampIntensity - light.intensity) * fade;
+        }
+        for (const head of lampHeadsRef.current) {
+          const mat = head.material as THREE.MeshStandardMaterial;
+          mat.emissiveIntensity += (target.lampIntensity - mat.emissiveIntensity) * fade;
+        }
       }
 
       renderer.render(scene, camera);
@@ -666,22 +726,22 @@ export default function WorldCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- day / night lighting ---
+  // --- day / night lighting: set targets here, lerp them gradually in the
+  // animate loop below so the transition fades instead of snapping ---
   useEffect(() => {
-    const scene = sceneRef.current;
-    const sun = sunRef.current;
-    const hemi = hemiRef.current;
-    if (!scene || !sun || !hemi) return;
+    const target = lightTargetRef.current;
     if (dayNight === 'day') {
-      scene.background = new THREE.Color(0xbfe3ea);
-      sun.intensity = 1.5;
-      sun.color.set(0xfff0d0);
-      hemi.intensity = 0.75;
+      target.bg.set(0xbfe3ea);
+      target.sunIntensity = 1.5;
+      target.sunColor.set(0xfff0d0);
+      target.hemiIntensity = 0.75;
+      target.lampIntensity = 0;
     } else {
-      scene.background = new THREE.Color(0x18213f);
-      sun.intensity = 0.35;
-      sun.color.set(0x8fa0ff);
-      hemi.intensity = 0.35;
+      target.bg.set(0x18213f);
+      target.sunIntensity = 0.35;
+      target.sunColor.set(0x8fa0ff);
+      target.hemiIntensity = 0.35;
+      target.lampIntensity = 1.4;
     }
   }, [dayNight]);
 
@@ -725,7 +785,12 @@ export default function WorldCanvas({
       const w = b.width ?? Math.max(...b.footprint.map((p) => p[0])) - Math.min(...b.footprint.map((p) => p[0]));
       const d = b.depth ?? Math.max(...b.footprint.map((p) => p[1])) - Math.min(...b.footprint.map((p) => p[1]));
 
-      const roofGeo = buildGableRoofGeometry(w, d, b.roofHeight);
+      const roofGeo =
+        b.roofStyle === 'hip'
+          ? buildHipRoofGeometry(w, d, b.roofHeight)
+          : b.roofStyle === 'flat'
+            ? buildFlatRoofGeometry(w, d)
+            : buildGableRoofGeometry(w, d, b.roofHeight);
       const roof = new THREE.Mesh(roofGeo, new THREE.MeshStandardMaterial({ color: b.roofColor, flatShading: true, side: THREE.DoubleSide }));
       roof.position.copy(toWorld(cx, cy, b.wallHeight));
       roof.rotation.y = b.angle ?? 0;
@@ -798,6 +863,36 @@ export default function WorldCanvas({
       }
     }
 
+    // lampposts: post + glowing head + a point light toggled by day/night
+    const lampLights: THREE.PointLight[] = [];
+    const lampHeads: THREE.Mesh[] = [];
+    for (const l of location.lampposts ?? []) {
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.11, 3.2, 6),
+        new THREE.MeshStandardMaterial({ color: 0x3a3226, flatShading: true })
+      );
+      post.position.copy(toWorld(l.x, l.y, 1.6));
+      post.castShadow = true;
+      group.add(post);
+
+      const head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.26, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfff2c0, emissive: 0xffdd88, emissiveIntensity: 0 })
+      );
+      head.position.copy(toWorld(l.x, l.y, 3.3));
+      group.add(head);
+      lampHeads.push(head);
+
+      const light = new THREE.PointLight(0xffdd88, 0, 13, 2);
+      light.position.copy(toWorld(l.x, l.y, 3.25));
+      group.add(light);
+      lampLights.push(light);
+
+      group.add(shadowMesh(l.x, l.y, 0.45));
+    }
+    lampLightsRef.current = lampLights;
+    lampHeadsRef.current = lampHeads;
+
     scene.add(group);
     return () => {
       scene.remove(group);
@@ -807,6 +902,8 @@ export default function WorldCanvas({
           (obj.material as THREE.Material).dispose();
         }
       });
+      lampLightsRef.current = [];
+      lampHeadsRef.current = [];
     };
   }, [location]);
 
@@ -897,28 +994,49 @@ export default function WorldCanvas({
         const characterRoot = new THREE.Group();
         group.add(characterRoot);
 
-        const body = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.55, 1.3, 6, 12),
-          new THREE.MeshStandardMaterial({ color })
-        );
-        body.position.y = 1.2;
-        body.castShadow = true;
-        characterRoot.add(body);
+        const limbMat = new THREE.MeshStandardMaterial({ color });
+        const makeLimbPivot = (x: number, y: number, len: number, radius: number) => {
+          const pivot = new THREE.Group();
+          pivot.position.set(x, y, 0);
+          const limb = new THREE.Mesh(new THREE.CapsuleGeometry(radius, len * 0.55, 4, 8), limbMat);
+          limb.position.y = -len / 2;
+          limb.castShadow = true;
+          pivot.add(limb);
+          characterRoot.add(pivot);
+          return pivot;
+        };
+
+        // torso only spans hip-to-shoulder now — legs/arms are separate
+        // swinging pivots so a real walk cycle is possible
+        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.48, 0.7, 6, 12), limbMat);
+        torso.position.y = 1.65;
+        torso.castShadow = true;
+        characterRoot.add(torso);
+
+        const legL = makeLimbPivot(-0.22, 0.8, 0.85, 0.17);
+        const legR = makeLimbPivot(0.22, 0.8, 0.85, 0.17);
+        const armL = makeLimbPivot(-0.58, 1.95, 0.78, 0.14);
+        const armR = makeLimbPivot(0.58, 1.95, 0.78, 0.14);
 
         const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 14), new THREE.MeshStandardMaterial({ color: 0xf3d9bd }));
-        head.position.y = 2.75;
+        head.position.y = 2.85;
         head.castShadow = true;
         characterRoot.add(head);
 
         const eyeMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b });
         for (const side of [-1, 1]) {
           const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), eyeMat);
-          eye.position.set(side * 0.18, 2.8, 0.44);
+          eye.position.set(side * 0.18, 2.9, 0.44);
           characterRoot.add(eye);
         }
 
         group.userData.characterRoot = characterRoot;
-        group.userData.bodyMesh = body;
+        group.userData.bodyMesh = torso;
+        group.userData.limbMat = limbMat;
+        group.userData.legL = legL;
+        group.userData.legR = legR;
+        group.userData.armL = armL;
+        group.userData.armR = armR;
         group.userData.simX = a.x;
         group.userData.simY = a.y;
         group.userData.facing = 0;

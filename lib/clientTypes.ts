@@ -71,9 +71,11 @@ export interface LocationDTO {
     roofColor: string;
     wallHeight: number;
     roofHeight: number;
+    roofStyle: string;
   }[];
   paths: { from: [number, number]; to: [number, number] }[];
   trees: { x: number; y: number; kind: 'round' | 'palm'; scale: number }[];
   rocks: { x: number; y: number; scale: number }[];
   flowers: { x: number; y: number; color: string }[];
+  lampposts: { x: number; y: number }[];
 }

@@ -84,6 +84,7 @@ function generateBuildings(count) {
       angle,
       wallColor: pick(WALL_COLORS),
       roofColor: pick(ROOF_COLORS),
+      roofStyle: pick(['gable', 'gable', 'hip', 'flat']),
       wallHeight: range(3.5, 4.5),
       roofHeight: range(2.2, 3.4)
     });
@@ -187,10 +188,32 @@ function generateFlowerPatches(buildings) {
   return patches;
 }
 
+function generateLampposts(paths, buildings) {
+  const lamps = [];
+  const segments = [...paths].sort(() => rand() - 0.5).slice(0, Math.min(12, paths.length));
+  for (const seg of segments) {
+    const mx = (seg.from[0] + seg.to[0]) / 2;
+    const my = (seg.from[1] + seg.to[1]) / 2;
+    const dx = seg.to[0] - seg.from[0];
+    const dy = seg.to[1] - seg.from[1];
+    const len = Math.hypot(dx, dy) || 1;
+    // offset perpendicular to the path so the lamp stands beside the road, not on it
+    const px = -dy / len;
+    const py = dx / len;
+    const side = rand() < 0.5 ? 1 : -1;
+    const x = mx + px * 2.6 * side;
+    const y = my + py * 2.6 * side;
+    if (pointInsideAnyBuilding(x, y, buildings, 1)) continue;
+    lamps.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
+  }
+  return lamps;
+}
+
 const buildings = generateBuildings(22);
 const paths = nearestNeighborPaths(buildings);
 const trees = generateTrees(buildings);
 const rocks = generateRocks(buildings);
+const lampposts = generateLampposts(paths, buildings);
 const flowers = generateFlowerPatches(buildings);
 
 mkdirSync('data', { recursive: true });
@@ -206,12 +229,13 @@ writeFileSync(
       paths,
       trees,
       rocks,
-      flowers
+      flowers,
+      lampposts
     },
     null,
     2
   )
 );
 console.log(
-  `Generated ${buildings.length} buildings, ${paths.length} path segments, ${trees.length} trees, ${rocks.length} rocks, ${flowers.length} flower patches.`
+  `Generated ${buildings.length} buildings, ${paths.length} path segments, ${trees.length} trees, ${rocks.length} rocks, ${flowers.length} flower patches, ${lampposts.length} lampposts.`
 );

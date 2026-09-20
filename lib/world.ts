@@ -15,6 +15,7 @@ export interface RawBuilding {
   roofColor: string;
   wallHeight: number;
   roofHeight: number;
+  roofStyle: string;
 }
 
 export interface PathSegment {
@@ -41,6 +42,11 @@ export interface FlowerPatch {
   color: string;
 }
 
+export interface Lamppost {
+  x: number;
+  y: number;
+}
+
 export interface LocationData {
   name: string;
   radiusMeters: number;
@@ -51,6 +57,7 @@ export interface LocationData {
   trees: TreePoint[];
   rocks: RockPoint[];
   flowers: FlowerPatch[];
+  lampposts: Lamppost[];
 }
 
 let cached: LocationData | null = null;
