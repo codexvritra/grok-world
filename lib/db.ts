@@ -20,6 +20,11 @@ function resolveUrl(): string {
   return `file:${path.join(dataDir, 'world.db')}`;
 }
 
+// A remote libSQL/Turso server manages its own storage engine and rejects
+// client-issued PRAGMAs like journal_mode as disallowed statements — that
+// pragma only makes sense (and is only needed) for a local file.
+const isRemote = !isBuildPhase && !!process.env.TURSO_DATABASE_URL;
+
 const g = globalThis as unknown as { __grokDb?: Client; __grokDbInit?: Promise<void> };
 
 export const db: Client =
@@ -32,11 +37,10 @@ if (!g.__grokDb) g.__grokDb = db;
 
 function ensureInit(): Promise<void> {
   if (!g.__grokDbInit) {
-    g.__grokDbInit = db
-      .executeMultiple(
-        `
-PRAGMA journal_mode = WAL;
-
+    g.__grokDbInit = (isRemote ? Promise.resolve() : db.execute('PRAGMA journal_mode = WAL').then(() => undefined))
+      .then(() =>
+        db.executeMultiple(
+          `
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -123,6 +127,7 @@ CREATE TABLE IF NOT EXISTS idempotency (
   PRIMARY KEY (agent_id, action_id)
 );
 `
+        )
       )
       .then(() =>
         // CREATE TABLE IF NOT EXISTS doesn't add columns to a table that
