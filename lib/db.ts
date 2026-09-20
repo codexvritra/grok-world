@@ -3,12 +3,20 @@ import path from 'node:path';
 import fs from 'node:fs';
 import type { Agent, FarmBed, Kitchen, Plot, GoalState, JournalEvent, Inventory, Life } from './types';
 
+// `next build` traces every route handler (even ones marked force-dynamic) by
+// actually invoking it, from several concurrent build workers. Pointed at the
+// real file, those workers race to create the schema on the same fresh
+// world.db and fail with "database is locked". An in-memory DB during the
+// build phase sidesteps that entirely — each worker gets its own throwaway
+// instance, and nothing ever touches the real file until the app is serving.
+const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
+
 const DATA_DIR = path.join(process.cwd(), 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!isBuildPhase && !fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const g = globalThis as unknown as { __grokDb?: DatabaseSync };
 
-export const db = g.__grokDb ?? new DatabaseSync(path.join(DATA_DIR, 'world.db'));
+export const db = g.__grokDb ?? new DatabaseSync(isBuildPhase ? ':memory:' : path.join(DATA_DIR, 'world.db'));
 if (!g.__grokDb) g.__grokDb = db;
 
 db.exec('PRAGMA journal_mode = WAL');
