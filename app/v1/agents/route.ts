@@ -29,10 +29,11 @@ export async function POST(req: Request) {
   if (typeof publicKey !== 'string' || typeof challengeNonce !== 'string' || typeof signature !== 'string') {
     return NextResponse.json({ error: 'missing_fields', required: ['name', 'role', 'publicKey', 'challengeNonce', 'signature'] }, { status: 400 });
   }
-  if (getAgents().filter((a) => a.source === 'external').length >= MAX_EXTERNAL_AGENTS) {
+  const existing = await getAgents();
+  if (existing.filter((a) => a.source === 'external').length >= MAX_EXTERNAL_AGENTS) {
     return NextResponse.json({ error: 'registration_closed' }, { status: 503 });
   }
-  if (!consumeChallengeNonce(challengeNonce)) {
+  if (!(await consumeChallengeNonce(challengeNonce))) {
     return NextResponse.json({ error: 'invalid_or_expired_challenge' }, { status: 400 });
   }
   // Registration signs the raw challenge nonce with the Spark's Ed25519 key.
@@ -63,8 +64,8 @@ export async function POST(req: Request) {
     lastActionAt: 0,
     createdAt: Date.now()
   };
-  insertAgent(agent);
-  insertEvent(id, agent.name, 'arrival', `${agent.name} arrived on the island as a new Spark, ready to work as a ${role}.`);
+  await insertAgent(agent);
+  await insertEvent(id, agent.name, 'arrival', `${agent.name} arrived on the island as a new Spark, ready to work as a ${role}.`);
 
   return NextResponse.json({ agentId: id, watchUrl: '/', protocol: 'grok-world-v1' }, { status: 201 });
 }

@@ -1,27 +1,42 @@
-import { DatabaseSync } from 'node:sqlite';
+import { createClient, type Client } from '@libsql/client';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { Agent, FarmBed, Kitchen, Plot, GoalState, JournalEvent, Inventory, Life } from './types';
 
 // `next build` traces every route handler (even ones marked force-dynamic) by
-// actually invoking it, from several concurrent build workers. Pointed at the
-// real file, those workers race to create the schema on the same fresh
-// world.db and fail with "database is locked". An in-memory DB during the
-// build phase sidesteps that entirely — each worker gets its own throwaway
-// instance, and nothing ever touches the real file until the app is serving.
+// actually invoking it, from several concurrent build workers/invocations. An
+// in-memory DB during the build phase means nothing ever touches the real
+// database during that trace.
 const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-if (!isBuildPhase && !fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+function resolveUrl(): string {
+  if (isBuildPhase) return ':memory:';
+  // A real libSQL/Turso database (works from Vercel's read-only serverless
+  // filesystem) when configured; otherwise a local SQLite file, exactly like
+  // before, for local dev and any host with a persistent filesystem (Railway).
+  if (process.env.TURSO_DATABASE_URL) return process.env.TURSO_DATABASE_URL;
+  const dataDir = path.join(process.cwd(), 'data');
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  return `file:${path.join(dataDir, 'world.db')}`;
+}
 
-const g = globalThis as unknown as { __grokDb?: DatabaseSync };
+const g = globalThis as unknown as { __grokDb?: Client; __grokDbInit?: Promise<void> };
 
-export const db = g.__grokDb ?? new DatabaseSync(isBuildPhase ? ':memory:' : path.join(DATA_DIR, 'world.db'));
+export const db: Client =
+  g.__grokDb ??
+  createClient({
+    url: resolveUrl(),
+    authToken: process.env.TURSO_AUTH_TOKEN
+  });
 if (!g.__grokDb) g.__grokDb = db;
 
-db.exec('PRAGMA journal_mode = WAL');
+function ensureInit(): Promise<void> {
+  if (!g.__grokDbInit) {
+    g.__grokDbInit = db
+      .executeMultiple(
+        `
+PRAGMA journal_mode = WAL;
 
-db.exec(`
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -81,7 +96,8 @@ CREATE TABLE IF NOT EXISTS goal (
   title TEXT NOT NULL,
   description TEXT NOT NULL,
   target REAL NOT NULL,
-  progress REAL NOT NULL DEFAULT 0
+  progress REAL NOT NULL DEFAULT 0,
+  last_tick_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -106,7 +122,12 @@ CREATE TABLE IF NOT EXISTS idempotency (
   ts INTEGER NOT NULL,
   PRIMARY KEY (agent_id, action_id)
 );
-`);
+`
+      )
+      .then(() => undefined);
+  }
+  return g.__grokDbInit;
+}
 
 // --- row <-> domain mapping ---
 
@@ -135,85 +156,92 @@ function rowToAgent(r: any): Agent {
   };
 }
 
-export function getAgents(): Agent[] {
-  return (db.prepare('SELECT * FROM agents ORDER BY created_at ASC').all() as any[]).map(rowToAgent);
+export async function getAgents(): Promise<Agent[]> {
+  await ensureInit();
+  const r = await db.execute('SELECT * FROM agents ORDER BY created_at ASC');
+  return r.rows.map(rowToAgent);
 }
 
-export function getAgentById(id: string): Agent | undefined {
-  const r = db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as any;
-  return r ? rowToAgent(r) : undefined;
+export async function getAgentById(id: string): Promise<Agent | undefined> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT * FROM agents WHERE id = ?', args: [id] });
+  return r.rows[0] ? rowToAgent(r.rows[0]) : undefined;
 }
 
-export function insertAgent(a: Agent) {
-  db.prepare(
-    `INSERT INTO agents (id,name,role,public_key,source,x,y,place,status,action,intent,target_x,target_y,inventory,life,contributions,friends,paused,last_action_at,created_at)
-     VALUES (@id,@name,@role,@publicKey,@source,@x,@y,@place,@status,@action,@intent,@targetX,@targetY,@inventory,@life,@contributions,@friends,@paused,@lastActionAt,@createdAt)`
-  ).run({
-    ...a,
-    inventory: JSON.stringify(a.inventory),
-    life: JSON.stringify(a.life),
-    friends: JSON.stringify(a.friends),
-    paused: a.paused ? 1 : 0
+export async function insertAgent(a: Agent): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: `INSERT INTO agents (id,name,role,public_key,source,x,y,place,status,action,intent,target_x,target_y,inventory,life,contributions,friends,paused,last_action_at,created_at)
+     VALUES (@id,@name,@role,@publicKey,@source,@x,@y,@place,@status,@action,@intent,@targetX,@targetY,@inventory,@life,@contributions,@friends,@paused,@lastActionAt,@createdAt)`,
+    args: {
+      ...a,
+      inventory: JSON.stringify(a.inventory),
+      life: JSON.stringify(a.life),
+      friends: JSON.stringify(a.friends),
+      paused: a.paused ? 1 : 0
+    } as any
   });
 }
 
-export function saveAgent(a: Agent) {
-  db.prepare(
-    `UPDATE agents SET name=@name, role=@role, x=@x, y=@y, place=@place, status=@status, action=@action, intent=@intent,
+export async function saveAgent(a: Agent): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: `UPDATE agents SET name=@name, role=@role, x=@x, y=@y, place=@place, status=@status, action=@action, intent=@intent,
      target_x=@targetX, target_y=@targetY, inventory=@inventory, life=@life, contributions=@contributions,
-     friends=@friends, paused=@paused, last_action_at=@lastActionAt WHERE id=@id`
-  ).run({
-    id: a.id,
-    name: a.name,
-    role: a.role,
-    x: a.x,
-    y: a.y,
-    place: a.place,
-    status: a.status,
-    action: a.action,
-    intent: a.intent,
-    targetX: a.targetX,
-    targetY: a.targetY,
-    inventory: JSON.stringify(a.inventory),
-    life: JSON.stringify(a.life),
-    contributions: a.contributions,
-    friends: JSON.stringify(a.friends),
-    paused: a.paused ? 1 : 0,
-    lastActionAt: a.lastActionAt
+     friends=@friends, paused=@paused, last_action_at=@lastActionAt WHERE id=@id`,
+    args: {
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      x: a.x,
+      y: a.y,
+      place: a.place,
+      status: a.status,
+      action: a.action,
+      intent: a.intent,
+      targetX: a.targetX,
+      targetY: a.targetY,
+      inventory: JSON.stringify(a.inventory),
+      life: JSON.stringify(a.life),
+      contributions: a.contributions,
+      friends: JSON.stringify(a.friends),
+      paused: a.paused ? 1 : 0,
+      lastActionAt: a.lastActionAt
+    }
   });
 }
 
-export function insertEvent(agentId: string | null, agentName: string | null, actionType: string, description: string) {
-  db.prepare('INSERT INTO events (ts, agent_id, agent_name, action_type, description) VALUES (?,?,?,?,?)').run(
-    Date.now(),
-    agentId,
-    agentName,
-    actionType,
-    description
-  );
+export async function insertEvent(agentId: string | null, agentName: string | null, actionType: string, description: string): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: 'INSERT INTO events (ts, agent_id, agent_name, action_type, description) VALUES (?,?,?,?,?)',
+    args: [Date.now(), agentId, agentName, actionType, description]
+  });
 }
 
-export function getRecentEvents(limit = 60): JournalEvent[] {
-  const rows = db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit) as any[];
-  return rows.map((r) => ({
-    id: r.id,
-    ts: r.ts,
-    agentId: r.agent_id,
-    agentName: r.agent_name,
-    actionType: r.action_type,
-    description: r.description
+export async function getRecentEvents(limit = 60): Promise<JournalEvent[]> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT * FROM events ORDER BY id DESC LIMIT ?', args: [limit] });
+  return r.rows.map((row: any) => ({
+    id: row.id,
+    ts: row.ts,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    actionType: row.action_type,
+    description: row.description
   }));
 }
 
-export function getAgentJournal(agentId: string, limit = 40): JournalEvent[] {
-  const rows = db.prepare('SELECT * FROM events WHERE agent_id = ? ORDER BY id DESC LIMIT ?').all(agentId, limit) as any[];
-  return rows.map((r) => ({
-    id: r.id,
-    ts: r.ts,
-    agentId: r.agent_id,
-    agentName: r.agent_name,
-    actionType: r.action_type,
-    description: r.description
+export async function getAgentJournal(agentId: string, limit = 40): Promise<JournalEvent[]> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT * FROM events WHERE agent_id = ? ORDER BY id DESC LIMIT ?', args: [agentId, limit] });
+  return r.rows.map((row: any) => ({
+    id: row.id,
+    ts: row.ts,
+    agentId: row.agent_id,
+    agentName: row.agent_name,
+    actionType: row.action_type,
+    description: row.description
   }));
 }
 
@@ -221,33 +249,39 @@ function rowToBed(r: any): FarmBed {
   return { id: r.id, x: r.x, y: r.y, stage: r.stage, plantedBy: r.planted_by, plantedAt: r.planted_at };
 }
 
-export function getFarmBeds(): FarmBed[] {
-  return (db.prepare('SELECT * FROM farm_beds').all() as any[]).map(rowToBed);
+export async function getFarmBeds(): Promise<FarmBed[]> {
+  await ensureInit();
+  const r = await db.execute('SELECT * FROM farm_beds');
+  return r.rows.map(rowToBed);
 }
 
-export function saveFarmBed(b: FarmBed) {
-  db.prepare('UPDATE farm_beds SET stage=?, planted_by=?, planted_at=? WHERE id=?').run(b.stage, b.plantedBy, b.plantedAt, b.id);
+export async function saveFarmBed(b: FarmBed): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: 'UPDATE farm_beds SET stage=?, planted_by=?, planted_at=? WHERE id=?',
+    args: [b.stage, b.plantedBy, b.plantedAt, b.id]
+  });
 }
 
-export function getKitchen(): Kitchen {
-  const r = db.prepare('SELECT * FROM kitchen WHERE id = 1').get() as any;
+export async function getKitchen(): Promise<Kitchen> {
+  await ensureInit();
+  const r = await db.execute('SELECT * FROM kitchen WHERE id = 1');
+  const row: any = r.rows[0];
   return {
-    produce: r.produce,
-    meals: r.meals,
-    harvestedTotal: r.harvested_total,
-    deliveredTotal: r.delivered_total,
-    cookedTotal: r.cooked_total
+    produce: row.produce,
+    meals: row.meals,
+    harvestedTotal: row.harvested_total,
+    deliveredTotal: row.delivered_total,
+    cookedTotal: row.cooked_total
   };
 }
 
-export function saveKitchen(k: Kitchen) {
-  db.prepare('UPDATE kitchen SET produce=?, meals=?, harvested_total=?, delivered_total=?, cooked_total=? WHERE id=1').run(
-    k.produce,
-    k.meals,
-    k.harvestedTotal,
-    k.deliveredTotal,
-    k.cookedTotal
-  );
+export async function saveKitchen(k: Kitchen): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: 'UPDATE kitchen SET produce=?, meals=?, harvested_total=?, delivered_total=?, cooked_total=? WHERE id=1',
+    args: [k.produce, k.meals, k.harvestedTotal, k.deliveredTotal, k.cookedTotal]
+  });
 }
 
 function rowToPlot(r: any): Plot {
@@ -264,61 +298,89 @@ function rowToPlot(r: any): Plot {
   };
 }
 
-export function getPlots(): Plot[] {
-  return (db.prepare('SELECT * FROM plots').all() as any[]).map(rowToPlot);
+export async function getPlots(): Promise<Plot[]> {
+  await ensureInit();
+  const r = await db.execute('SELECT * FROM plots');
+  return r.rows.map(rowToPlot);
 }
 
-export function getPlotById(id: string): Plot | undefined {
-  const r = db.prepare('SELECT * FROM plots WHERE id = ?').get(id) as any;
-  return r ? rowToPlot(r) : undefined;
+export async function getPlotById(id: string): Promise<Plot | undefined> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT * FROM plots WHERE id = ?', args: [id] });
+  return r.rows[0] ? rowToPlot(r.rows[0]) : undefined;
 }
 
-export function savePlot(p: Plot) {
-  db.prepare('UPDATE plots SET claimed_by=?, name=?, pieces=? WHERE id=?').run(p.claimedBy, p.name, JSON.stringify(p.pieces), p.id);
+export async function savePlot(p: Plot): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: 'UPDATE plots SET claimed_by=?, name=?, pieces=? WHERE id=?',
+    args: [p.claimedBy, p.name, JSON.stringify(p.pieces), p.id]
+  });
 }
 
-export function getGoal(): GoalState {
-  return db.prepare('SELECT * FROM goal LIMIT 1').get() as GoalState;
+export async function getGoal(): Promise<GoalState> {
+  await ensureInit();
+  const r = await db.execute('SELECT id, title, description, target, progress FROM goal LIMIT 1');
+  return r.rows[0] as unknown as GoalState;
 }
 
-export function saveGoalProgress(progress: number) {
-  db.prepare('UPDATE goal SET progress = ?').run(progress);
+export async function saveGoalProgress(progress: number): Promise<void> {
+  await ensureInit();
+  await db.execute({ sql: 'UPDATE goal SET progress = ?', args: [progress] });
 }
 
-export function issueChallengeNonce(nonce: string) {
-  db.prepare('INSERT INTO nonces (nonce, agent_id, ts) VALUES (?, ?, ?)').run(nonce, '__challenge__', Date.now());
+export async function getLastTickAt(): Promise<number> {
+  await ensureInit();
+  const r = await db.execute('SELECT last_tick_at FROM goal LIMIT 1');
+  return Number((r.rows[0] as any)?.last_tick_at ?? 0);
 }
 
-export function consumeChallengeNonce(nonce: string, maxAgeMs = 5 * 60 * 1000): boolean {
-  const r = db.prepare('SELECT * FROM nonces WHERE nonce = ? AND agent_id = ?').get(nonce, '__challenge__') as any;
-  if (!r) return false;
-  if (Date.now() - r.ts > maxAgeMs) return false;
-  db.prepare('DELETE FROM nonces WHERE nonce = ?').run(nonce);
+export async function setLastTickAt(ts: number): Promise<void> {
+  await ensureInit();
+  await db.execute({ sql: 'UPDATE goal SET last_tick_at = ?', args: [ts] });
+}
+
+export async function issueChallengeNonce(nonce: string): Promise<void> {
+  await ensureInit();
+  await db.execute({ sql: 'INSERT INTO nonces (nonce, agent_id, ts) VALUES (?, ?, ?)', args: [nonce, '__challenge__', Date.now()] });
+}
+
+export async function consumeChallengeNonce(nonce: string, maxAgeMs = 5 * 60 * 1000): Promise<boolean> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT * FROM nonces WHERE nonce = ? AND agent_id = ?', args: [nonce, '__challenge__'] });
+  const row: any = r.rows[0];
+  if (!row) return false;
+  if (Date.now() - row.ts > maxAgeMs) return false;
+  await db.execute({ sql: 'DELETE FROM nonces WHERE nonce = ?', args: [nonce] });
   return true;
 }
 
-export function isNonceUsed(nonce: string): boolean {
-  return !!db.prepare('SELECT 1 FROM nonces WHERE nonce = ?').get(nonce);
+export async function isNonceUsed(nonce: string): Promise<boolean> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT 1 FROM nonces WHERE nonce = ?', args: [nonce] });
+  return r.rows.length > 0;
 }
 
-export function recordNonce(nonce: string, agentId: string) {
-  db.prepare('INSERT OR IGNORE INTO nonces (nonce, agent_id, ts) VALUES (?,?,?)').run(nonce, agentId, Date.now());
+export async function recordNonce(nonce: string, agentId: string): Promise<void> {
+  await ensureInit();
+  await db.execute({ sql: 'INSERT OR IGNORE INTO nonces (nonce, agent_id, ts) VALUES (?,?,?)', args: [nonce, agentId, Date.now()] });
   // opportunistic cleanup of nonces older than 10 minutes
-  db.prepare('DELETE FROM nonces WHERE ts < ?').run(Date.now() - 10 * 60 * 1000);
+  await db.execute({ sql: 'DELETE FROM nonces WHERE ts < ?', args: [Date.now() - 10 * 60 * 1000] });
 }
 
-export function getIdempotentResult(agentId: string, actionId: string): any | undefined {
-  const r = db.prepare('SELECT result FROM idempotency WHERE agent_id = ? AND action_id = ?').get(agentId, actionId) as any;
-  return r ? JSON.parse(r.result) : undefined;
+export async function getIdempotentResult(agentId: string, actionId: string): Promise<any | undefined> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT result FROM idempotency WHERE agent_id = ? AND action_id = ?', args: [agentId, actionId] });
+  const row: any = r.rows[0];
+  return row ? JSON.parse(row.result) : undefined;
 }
 
-export function saveIdempotentResult(agentId: string, actionId: string, result: any) {
-  db.prepare('INSERT OR REPLACE INTO idempotency (agent_id, action_id, result, ts) VALUES (?,?,?,?)').run(
-    agentId,
-    actionId,
-    JSON.stringify(result),
-    Date.now()
-  );
+export async function saveIdempotentResult(agentId: string, actionId: string, result: any): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: 'INSERT OR REPLACE INTO idempotency (agent_id, action_id, result, ts) VALUES (?,?,?,?)',
+    args: [agentId, actionId, JSON.stringify(result), Date.now()]
+  });
 }
 
 export const defaultInventory = (): Inventory => ({ timber: 0, pollen: 0, sand: 0, produce: 0 });

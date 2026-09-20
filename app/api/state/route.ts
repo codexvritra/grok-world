@@ -1,11 +1,16 @@
 import '@/lib/simLoop';
 import { NextResponse } from 'next/server';
 import { getAgents, getFarmBeds, getKitchen, getGoal } from '@/lib/db';
+import { catchUpTicks } from '@/lib/sim';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const agents = getAgents().map((a) => ({
+  await catchUpTicks();
+
+  const [rawAgents, farm, kitchen, goal] = await Promise.all([getAgents(), getFarmBeds(), getKitchen(), getGoal()]);
+
+  const agents = rawAgents.map((a) => ({
     id: a.id,
     name: a.name,
     role: a.role,
@@ -25,8 +30,8 @@ export async function GET() {
   return NextResponse.json({
     now: Date.now(),
     agents,
-    farm: getFarmBeds(),
-    kitchen: getKitchen(),
-    goal: getGoal()
+    farm,
+    kitchen,
+    goal
   });
 }

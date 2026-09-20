@@ -6,6 +6,6 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const nonce = randomNonce();
-  issueChallengeNonce(nonce);
+  await issueChallengeNonce(nonce);
   return NextResponse.json({ nonce, expiresInMs: 5 * 60 * 1000 });
 }

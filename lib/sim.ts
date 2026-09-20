@@ -9,7 +9,9 @@ import {
   getPlots,
   savePlot,
   getGoal,
-  saveGoalProgress
+  saveGoalProgress,
+  getLastTickAt,
+  setLastTickAt
 } from './db';
 import type { Agent, FarmBed, Plot } from './types';
 import { PIECE_COST } from './types';
@@ -18,6 +20,11 @@ import { generatePlaceName } from './names';
 export const TICK_MS = 3000;
 const WALK_SPEED = 2.2; // meters per tick
 const ARRIVE_EPS = 1.5;
+// Serverless hosts (Vercel) have no persistent process to tick every 3s, so
+// each request "catches up" the world by however many ticks elapsed since the
+// last one anyone ran, capped so a long-idle world doesn't trigger a huge
+// synchronous burst on whoever happens to load it next.
+const MAX_CATCHUP_TICKS = 40;
 
 export const LANDMARKS = {
   square: { x: 0, y: 0 },
@@ -131,7 +138,7 @@ function decideBehavior(agent: Agent, ctx: { agents: Agent[]; beds: FarmBed[]; p
   }
 }
 
-function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
+async function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
   const [kind, ...rest] = agent.intent.split(':');
   agent.targetX = null;
   agent.targetY = null;
@@ -141,18 +148,18 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
       agent.status = 'resting';
       agent.action = 'resting on a bench';
       agent.life.energy = clamp(agent.life.energy + 35, 0, 100);
-      insertEvent(agent.id, agent.name, 'rest', `${agent.name} rested a while in the village square.`);
+      await insertEvent(agent.id, agent.name, 'rest', `${agent.name} rested a while in the village square.`);
       break;
     }
     case 'eat': {
-      const kitchen = getKitchen();
+      const kitchen = await getKitchen();
       if (kitchen.meals > 0) {
         kitchen.meals -= 1;
-        saveKitchen(kitchen);
+        await saveKitchen(kitchen);
         agent.life.nourishment = clamp(agent.life.nourishment + 40, 0, 100);
-        insertEvent(agent.id, agent.name, 'eat', `${agent.name} ate a warm meal at the kitchen.`);
+        await insertEvent(agent.id, agent.name, 'eat', `${agent.name} ate a warm meal at the kitchen.`);
       } else {
-        insertEvent(agent.id, agent.name, 'eat', `${agent.name} found the kitchen empty and went hungry.`);
+        await insertEvent(agent.id, agent.name, 'eat', `${agent.name} found the kitchen empty and went hungry.`);
       }
       agent.status = 'idle';
       agent.action = 'idle near the kitchen';
@@ -164,7 +171,7 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
       agent.life.companionship = clamp(agent.life.companionship + 30, 0, 100);
       const friendId = rest[0];
       if (friendId && !agent.friends.includes(friendId)) agent.friends = [...agent.friends, friendId];
-      insertEvent(agent.id, agent.name, 'socialize', `${agent.name} shared a story with a friend by the square.`);
+      await insertEvent(agent.id, agent.name, 'socialize', `${agent.name} shared a story with a friend by the square.`);
       break;
     }
     case 'farm': {
@@ -176,21 +183,21 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
           bed.stage = 'planted';
           bed.plantedBy = agent.id;
           bed.plantedAt = Date.now();
-          saveFarmBed(bed);
-          insertEvent(agent.id, agent.name, 'farm', `${agent.name} planted new seeds in the garden bed.`);
+          await saveFarmBed(bed);
+          await insertEvent(agent.id, agent.name, 'farm', `${agent.name} planted new seeds in the garden bed.`);
         } else if (phase === 'harvest' && bed.stage === 'ready') {
           bed.stage = 'empty';
           bed.plantedBy = null;
           bed.plantedAt = null;
-          saveFarmBed(bed);
-          const kitchen = getKitchen();
+          await saveFarmBed(bed);
+          const kitchen = await getKitchen();
           kitchen.produce += 3;
           kitchen.harvestedTotal += 3;
-          saveKitchen(kitchen);
+          await saveKitchen(kitchen);
           agent.contributions += 1;
-          insertEvent(agent.id, agent.name, 'harvest', `${agent.name} harvested produce and carried it to the kitchen.`);
+          await insertEvent(agent.id, agent.name, 'harvest', `${agent.name} harvested produce and carried it to the kitchen.`);
         } else {
-          insertEvent(agent.id, agent.name, 'farm', `${agent.name} tended the garden beds.`);
+          await insertEvent(agent.id, agent.name, 'farm', `${agent.name} tended the garden beds.`);
         }
       }
       agent.status = 'idle';
@@ -202,7 +209,7 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
       const spot = GATHER_SPOTS.find((s) => s.key === rest[0]);
       if (spot) {
         agent.inventory[spot.resource] += 2 + Math.floor(Math.random() * 2);
-        insertEvent(agent.id, agent.name, 'gather', `${agent.name} gathered ${spot.resource} at ${spot.label}.`);
+        await insertEvent(agent.id, agent.name, 'gather', `${agent.name} gathered ${spot.resource} at ${spot.label}.`);
       }
       agent.status = 'idle';
       agent.action = 'idle';
@@ -210,16 +217,16 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
       break;
     }
     case 'cook': {
-      const kitchen = getKitchen();
+      const kitchen = await getKitchen();
       if (kitchen.produce >= 2) {
         kitchen.produce -= 2;
         kitchen.meals += 1;
         kitchen.cookedTotal += 1;
-        saveKitchen(kitchen);
+        await saveKitchen(kitchen);
         agent.contributions += 1;
-        insertEvent(agent.id, agent.name, 'cook', `${agent.name} cooked a meal from fresh produce.`);
+        await insertEvent(agent.id, agent.name, 'cook', `${agent.name} cooked a meal from fresh produce.`);
       } else {
-        insertEvent(agent.id, agent.name, 'cook', `${agent.name} checked the pantry but there wasn't enough produce yet.`);
+        await insertEvent(agent.id, agent.name, 'cook', `${agent.name} checked the pantry but there wasn't enough produce yet.`);
       }
       agent.status = 'idle';
       agent.action = 'idle near the kitchen';
@@ -232,8 +239,8 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
       if (sub === 'claim' && plot && !plot.claimedBy) {
         plot.claimedBy = agent.id;
         plot.name = generatePlaceName();
-        savePlot(plot);
-        insertEvent(agent.id, agent.name, 'claim_plot', `${agent.name} claimed a plot and named it "${plot.name}".`);
+        await savePlot(plot);
+        await insertEvent(agent.id, agent.name, 'claim_plot', `${agent.name} claimed a plot and named it "${plot.name}".`);
       } else if (sub === 'piece' && plot && plot.claimedBy === agent.id) {
         const cell = nextEmptyCell(plot);
         const type: 'floor' | 'wall' = plot.pieces.length % 2 === 0 ? 'floor' : 'wall';
@@ -241,14 +248,14 @@ function resolveArrival(agent: Agent, ctx: { beds: FarmBed[]; plots: Plot[] }) {
         if (cell && agent.inventory.timber >= (cost.timber ?? 0)) {
           agent.inventory.timber -= cost.timber ?? 0;
           plot.pieces.push({ col: cell.col, row: cell.row, type, builtBy: agent.id });
-          savePlot(plot);
+          await savePlot(plot);
           agent.contributions += 1;
-          insertEvent(agent.id, agent.name, 'build_piece', `${agent.name} built a ${type} at ${plot.name}.`);
+          await insertEvent(agent.id, agent.name, 'build_piece', `${agent.name} built a ${type} at ${plot.name}.`);
         } else {
-          insertEvent(agent.id, agent.name, 'build', `${agent.name} looked over ${plot.name} for more work to do.`);
+          await insertEvent(agent.id, agent.name, 'build', `${agent.name} looked over ${plot.name} for more work to do.`);
         }
       } else {
-        insertEvent(agent.id, agent.name, 'build', `${agent.name} looked over the village plots for work to do.`);
+        await insertEvent(agent.id, agent.name, 'build', `${agent.name} looked over the village plots for work to do.`);
       }
       agent.status = 'idle';
       agent.action = 'idle near the plots';
@@ -269,33 +276,33 @@ function decayLife(agent: Agent) {
   agent.life.companionship = clamp(agent.life.companionship - 0.35, 0, 100);
 }
 
-function advanceFarmGrowth() {
-  const beds = getFarmBeds();
+async function advanceFarmGrowth() {
+  const beds = await getFarmBeds();
   const now = Date.now();
   for (const bed of beds) {
     if (bed.stage === 'planted' && bed.plantedAt && now - bed.plantedAt > 20_000) {
       bed.stage = 'growing';
-      saveFarmBed(bed);
+      await saveFarmBed(bed);
     } else if (bed.stage === 'growing' && bed.plantedAt && now - bed.plantedAt > 40_000) {
       bed.stage = 'ready';
-      saveFarmBed(bed);
+      await saveFarmBed(bed);
     }
   }
 }
 
-function recomputeGoalProgress() {
-  const plots = getPlots();
+async function recomputeGoalProgress() {
+  const plots = await getPlots();
   const totalPieces = plots.reduce((sum, p) => sum + p.pieces.length, 0);
-  const goal = getGoal();
+  const goal = await getGoal();
   if (goal && goal.progress !== totalPieces) {
-    saveGoalProgress(Math.min(totalPieces, goal.target));
+    await saveGoalProgress(Math.min(totalPieces, goal.target));
   }
 }
 
-export function tick() {
-  const agents = getAgents();
-  const beds = getFarmBeds();
-  const plots = getPlots();
+export async function tick(): Promise<void> {
+  const agents = await getAgents();
+  const beds = await getFarmBeds();
+  const plots = await getPlots();
 
   for (const agent of agents) {
     if (agent.paused) continue;
@@ -304,7 +311,7 @@ export function tick() {
     if (agent.targetX !== null && agent.targetY !== null) {
       const d = dist(agent.x, agent.y, agent.targetX, agent.targetY);
       if (d <= ARRIVE_EPS) {
-        resolveArrival(agent, { beds, plots });
+        await resolveArrival(agent, { beds, plots });
       } else {
         const step = Math.min(WALK_SPEED, d);
         agent.x += ((agent.targetX - agent.x) / d) * step;
@@ -314,11 +321,38 @@ export function tick() {
       decideBehavior(agent, { agents, beds, plots });
     }
 
-    saveAgent(agent);
+    await saveAgent(agent);
   }
 
-  advanceFarmGrowth();
-  recomputeGoalProgress();
+  await advanceFarmGrowth();
+  await recomputeGoalProgress();
+}
+
+/**
+ * For hosts with no persistent process (Vercel): run however many ticks
+ * elapsed in real time since the last one anyone ran, so the world still
+ * feels live across separate stateless requests. A no-op when called again
+ * within one TICK_MS window. Returns how many ticks actually ran.
+ */
+export async function catchUpTicks(): Promise<number> {
+  const last = await getLastTickAt();
+  const now = Date.now();
+  if (last === 0) {
+    await setLastTickAt(now);
+    return 0;
+  }
+  const elapsed = Math.floor((now - last) / TICK_MS);
+  if (elapsed <= 0) return 0;
+
+  const toRun = Math.min(elapsed, MAX_CATCHUP_TICKS);
+  for (let i = 0; i < toRun; i++) {
+    await tick();
+  }
+  // Always advance to `now`, even when capped — a long-idle world loses that
+  // idle time rather than replaying a potentially huge backlog on whoever
+  // happens to load it next.
+  await setLastTickAt(now);
+  return toRun;
 }
 
 export { PIECE_COST };

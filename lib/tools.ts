@@ -41,7 +41,7 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
-export function runTool(agent: Agent, tool: string, params: any): any {
+export async function runTool(agent: Agent, tool: string, params: any): Promise<any> {
   switch (tool) {
     case 'choose_occupation': {
       const role = params?.role;
@@ -51,35 +51,35 @@ export function runTool(agent: Agent, tool: string, params: any): any {
       agent.role = role;
       agent.action = `took up work as a ${role}`;
       agent.status = 'idle';
-      insertEvent(agent.id, agent.name, 'occupation', `${agent.name} chose to work as a ${role}.`);
+      await insertEvent(agent.id, agent.name, 'occupation', `${agent.name} chose to work as a ${role}.`);
       return { ok: true, role };
     }
 
     case 'work_garden_bed': {
       const bedId = params?.bedId;
       const op = params?.op; // plant | tend | harvest
-      const beds = getFarmBeds();
+      const beds = await getFarmBeds();
       const bed = beds.find((b) => b.id === bedId);
       if (!bed) throw new ToolError('not_found', 'unknown bedId');
       if (op === 'plant' && bed.stage === 'empty') {
         bed.stage = 'planted';
         bed.plantedBy = agent.id;
         bed.plantedAt = Date.now();
-        saveFarmBed(bed);
-        insertEvent(agent.id, agent.name, 'farm', `${agent.name} planted seeds in a garden bed.`);
+        await saveFarmBed(bed);
+        await insertEvent(agent.id, agent.name, 'farm', `${agent.name} planted seeds in a garden bed.`);
       } else if (op === 'tend' && (bed.stage === 'planted' || bed.stage === 'growing')) {
-        insertEvent(agent.id, agent.name, 'farm', `${agent.name} tended a garden bed.`);
+        await insertEvent(agent.id, agent.name, 'farm', `${agent.name} tended a garden bed.`);
       } else if (op === 'harvest' && bed.stage === 'ready') {
         bed.stage = 'empty';
         bed.plantedBy = null;
         bed.plantedAt = null;
-        saveFarmBed(bed);
-        const kitchen = getKitchen();
+        await saveFarmBed(bed);
+        const kitchen = await getKitchen();
         kitchen.produce += 3;
         kitchen.harvestedTotal += 3;
-        saveKitchen(kitchen);
+        await saveKitchen(kitchen);
         agent.contributions += 1;
-        insertEvent(agent.id, agent.name, 'harvest', `${agent.name} harvested a garden bed.`);
+        await insertEvent(agent.id, agent.name, 'harvest', `${agent.name} harvested a garden bed.`);
       } else {
         throw new ToolError('invalid_state', `cannot ${op} a bed in stage ${bed.stage}`);
       }
@@ -98,7 +98,7 @@ export function runTool(agent: Agent, tool: string, params: any): any {
           const resource = params?.resource ?? 'timber';
           if (!['timber', 'pollen', 'sand'].includes(resource)) throw new ToolError('invalid_params', 'unknown resource');
           agent.inventory[resource as 'timber' | 'pollen' | 'sand'] += 2;
-          insertEvent(agent.id, agent.name, 'gather', `${agent.name} gathered ${resource}.`);
+          await insertEvent(agent.id, agent.name, 'gather', `${agent.name} gathered ${resource}.`);
           break;
         }
         case 'explore': {
@@ -106,68 +106,68 @@ export function runTool(agent: Agent, tool: string, params: any): any {
           const r = 40 + Math.random() * 150;
           agent.x = clamp(Math.cos(angle) * r, -300, 300);
           agent.y = clamp(Math.sin(angle) * r, -300, 300);
-          insertEvent(agent.id, agent.name, 'explore', `${agent.name} explored a new corner of the village.`);
+          await insertEvent(agent.id, agent.name, 'explore', `${agent.name} explored a new corner of the village.`);
           break;
         }
         case 'craft':
-          insertEvent(agent.id, agent.name, 'craft', `${agent.name} crafted something small from raw materials.`);
+          await insertEvent(agent.id, agent.name, 'craft', `${agent.name} crafted something small from raw materials.`);
           break;
         case 'deliver':
           agent.contributions += 0.5;
-          insertEvent(agent.id, agent.name, 'deliver', `${agent.name} delivered supplies to a neighbor.`);
+          await insertEvent(agent.id, agent.name, 'deliver', `${agent.name} delivered supplies to a neighbor.`);
           break;
         case 'restore':
           agent.contributions += 1;
-          insertEvent(agent.id, agent.name, 'restore', `${agent.name} restored a weathered piece of the village.`);
+          await insertEvent(agent.id, agent.name, 'restore', `${agent.name} restored a weathered piece of the village.`);
           break;
         case 'socialize': {
           agent.life.companionship = clamp(agent.life.companionship + 25, 0, 100);
-          insertEvent(agent.id, agent.name, 'socialize', `${agent.name} socialized near ${place}.`);
+          await insertEvent(agent.id, agent.name, 'socialize', `${agent.name} socialized near ${place}.`);
           break;
         }
         case 'rest':
           agent.life.energy = clamp(agent.life.energy + 35, 0, 100);
           agent.x = LANDMARKS.square.x;
           agent.y = LANDMARKS.square.y;
-          insertEvent(agent.id, agent.name, 'rest', `${agent.name} rested in the village square.`);
+          await insertEvent(agent.id, agent.name, 'rest', `${agent.name} rested in the village square.`);
           break;
         case 'collect_produce': {
-          const kitchen = getKitchen();
+          const kitchen = await getKitchen();
           const amt = Math.min(3, kitchen.produce);
           kitchen.produce -= amt;
-          saveKitchen(kitchen);
+          await saveKitchen(kitchen);
           agent.inventory.produce += amt;
-          insertEvent(agent.id, agent.name, 'collect_produce', `${agent.name} collected produce from the kitchen store.`);
+          await insertEvent(agent.id, agent.name, 'collect_produce', `${agent.name} collected produce from the kitchen store.`);
           break;
         }
         case 'deliver_produce': {
           const amt = Math.min(agent.inventory.produce, params?.quantity ?? agent.inventory.produce);
           agent.inventory.produce -= amt;
-          const kitchen = getKitchen();
+          const kitchen = await getKitchen();
           kitchen.produce += amt;
           kitchen.deliveredTotal += amt;
-          saveKitchen(kitchen);
-          insertEvent(agent.id, agent.name, 'deliver_produce', `${agent.name} delivered produce to the kitchen.`);
+          await saveKitchen(kitchen);
+          await insertEvent(agent.id, agent.name, 'deliver_produce', `${agent.name} delivered produce to the kitchen.`);
           break;
         }
         case 'cook': {
-          const kitchen = getKitchen();
+          const kitchen = await getKitchen();
           if (kitchen.produce < 2) throw new ToolError('invalid_state', 'not enough produce to cook');
           kitchen.produce -= 2;
           kitchen.meals += 1;
           kitchen.cookedTotal += 1;
-          saveKitchen(kitchen);
+          await saveKitchen(kitchen);
           agent.contributions += 1;
-          insertEvent(agent.id, agent.name, 'cook', `${agent.name} cooked a meal.`);
+          await insertEvent(agent.id, agent.name, 'cook', `${agent.name} cooked a meal.`);
           break;
         }
         case 'eat': {
-          const kitchen = getKitchen();
+          const kitchen = await getKitchen();
           if (kitchen.meals < 1) throw new ToolError('invalid_state', 'no meals available');
           kitchen.meals -= 1;
-          saveKitchen(kitchen);
+          await saveKitchen(kitchen);
           agent.life.nourishment = clamp(agent.life.nourishment + 40, 0, 100);
-          insertEvent(agent.id, agent.name, 'eat', `${agent.name} ate a meal.`);
+          await insertEvent(agent.id, agent.name, 'eat', `${agent.name} ate a meal.`);
           break;
         }
         default:
@@ -179,13 +179,13 @@ export function runTool(agent: Agent, tool: string, params: any): any {
 
     case 'claim_plot': {
       const plotId = params?.plotId;
-      const plot = getPlotById(plotId);
+      const plot = await getPlotById(plotId);
       if (!plot) throw new ToolError('not_found', 'unknown plotId');
       if (plot.claimedBy && plot.claimedBy !== agent.id) throw new ToolError('conflict', 'plot already claimed');
       plot.claimedBy = agent.id;
       if (!plot.name) plot.name = generatePlaceName();
-      savePlot(plot);
-      insertEvent(agent.id, agent.name, 'claim_plot', `${agent.name} claimed a plot and named it "${plot.name}".`);
+      await savePlot(plot);
+      await insertEvent(agent.id, agent.name, 'claim_plot', `${agent.name} claimed a plot and named it "${plot.name}".`);
       return { ok: true, plot };
     }
 
@@ -194,7 +194,7 @@ export function runTool(agent: Agent, tool: string, params: any): any {
       const col = params?.col;
       const row = params?.row;
       const type = params?.type;
-      const plot = getPlotById(plotId);
+      const plot = await getPlotById(plotId);
       if (!plot) throw new ToolError('not_found', 'unknown plotId');
       if (plot.claimedBy !== agent.id) throw new ToolError('forbidden', 'you have not claimed this plot');
       if (!(type in PIECE_COST)) throw new ToolError('invalid_params', 'unknown piece type');
@@ -210,31 +210,32 @@ export function runTool(agent: Agent, tool: string, params: any): any {
         (agent.inventory as any)[res] -= amt as number;
       }
       plot.pieces.push({ col, row, type, builtBy: agent.id });
-      savePlot(plot);
+      await savePlot(plot);
       agent.contributions += 1;
-      insertEvent(agent.id, agent.name, 'build_piece', `${agent.name} built a ${type} on a claimed plot.`);
+      await insertEvent(agent.id, agent.name, 'build_piece', `${agent.name} built a ${type} on a claimed plot.`);
       return { ok: true, plot };
     }
 
     case 'release_empty_plot': {
       const plotId = params?.plotId;
-      const plot = getPlotById(plotId);
+      const plot = await getPlotById(plotId);
       if (!plot) throw new ToolError('not_found', 'unknown plotId');
       if (plot.claimedBy !== agent.id) throw new ToolError('forbidden', 'you have not claimed this plot');
       if (plot.pieces.length > 0) throw new ToolError('invalid_state', 'plot is not empty');
       plot.claimedBy = null;
       plot.name = null;
-      savePlot(plot);
-      insertEvent(agent.id, agent.name, 'release_plot', `${agent.name} released a claimed plot.`);
+      await savePlot(plot);
+      await insertEvent(agent.id, agent.name, 'release_plot', `${agent.name} released a claimed plot.`);
       return { ok: true };
     }
 
     case 'read_my_journal': {
-      return { ok: true, journal: getAgentJournal(agent.id, params?.limit ?? 40) };
+      return { ok: true, journal: await getAgentJournal(agent.id, params?.limit ?? 40) };
     }
 
     case 'inspect_my_observation': {
-      const others = getAgents()
+      const allAgents = await getAgents();
+      const others = allAgents
         .filter((a) => a.id !== agent.id)
         .map((a) => ({ id: a.id, name: a.name, role: a.role, x: a.x, y: a.y, status: a.status, place: a.place }));
       return {
@@ -244,7 +245,7 @@ export function runTool(agent: Agent, tool: string, params: any): any {
           .map((o) => ({ ...o, distance: Math.hypot(o.x - agent.x, o.y - agent.y) }))
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 8),
-        plots: getPlots()
+        plots: await getPlots()
       };
     }
 

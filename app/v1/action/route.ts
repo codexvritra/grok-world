@@ -4,6 +4,7 @@ import { buildSigningMessage, sha256Hex, verifySignature } from '@/lib/crypto';
 import { getAgentById, saveAgent, isNonceUsed, recordNonce, getIdempotentResult, saveIdempotentResult } from '@/lib/db';
 import { runTool, ToolError, READ_ONLY_TOOLS } from '@/lib/tools';
 import { canAct } from '@/lib/pacing';
+import { catchUpTicks } from '@/lib/sim';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,8 @@ function fail(status: number, error: string, extra?: Record<string, unknown>) {
 }
 
 export async function POST(req: Request) {
+  await catchUpTicks();
+
   const agentId = req.headers.get('x-spark-id');
   const timestamp = req.headers.get('x-spark-time');
   const nonce = req.headers.get('x-spark-nonce');
@@ -23,7 +26,7 @@ export async function POST(req: Request) {
     return fail(400, 'missing_auth_headers', { required: ['X-Spark-Id', 'X-Spark-Time', 'X-Spark-Nonce', 'X-Spark-Signature'] });
   }
 
-  const agent = getAgentById(agentId);
+  const agent = await getAgentById(agentId);
   if (!agent || agent.source !== 'external' || !agent.publicKey) {
     return fail(404, 'unknown_agent');
   }
@@ -35,7 +38,7 @@ export async function POST(req: Request) {
   if (!Number.isFinite(skew) || skew > MAX_SKEW_MS) {
     return fail(401, 'timestamp_out_of_range');
   }
-  if (isNonceUsed(nonce)) {
+  if (await isNonceUsed(nonce)) {
     return fail(401, 'nonce_already_used');
   }
 
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
   if (!verifySignature(agent.publicKey, message, signature)) {
     return fail(401, 'signature_verification_failed');
   }
-  recordNonce(nonce, agentId);
+  await recordNonce(nonce, agentId);
 
   let body: any;
   try {
@@ -68,7 +71,7 @@ export async function POST(req: Request) {
   const isRead = READ_ONLY_TOOLS.has(tool);
 
   if (!isRead && actionId) {
-    const cached = getIdempotentResult(agentId, actionId);
+    const cached = await getIdempotentResult(agentId, actionId);
     if (cached) return NextResponse.json(cached);
   }
 
@@ -80,10 +83,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = runTool(agent, tool, params ?? {});
+    const result = await runTool(agent, tool, params ?? {});
     if (!isRead) agent.lastActionAt = Date.now();
-    saveAgent(agent);
-    if (!isRead && actionId) saveIdempotentResult(agentId, actionId, result);
+    await saveAgent(agent);
+    if (!isRead && actionId) await saveIdempotentResult(agentId, actionId, result);
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof ToolError) {

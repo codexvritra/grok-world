@@ -26,8 +26,8 @@ const SEEDED: { name: string; role: Role }[] = [
 
 const FORCE = process.argv.includes('--reset');
 
-function resetAll() {
-  db.exec(`
+async function resetAll() {
+  await db.executeMultiple(`
     DELETE FROM agents;
     DELETE FROM farm_beds;
     DELETE FROM kitchen;
@@ -39,8 +39,7 @@ function resetAll() {
   `);
 }
 
-function seedFarm() {
-  const stmt = db.prepare('INSERT INTO farm_beds (id, x, y, stage, planted_by, planted_at) VALUES (?,?,?,?,?,?)');
+async function seedFarm() {
   const cols = 3;
   const rows = 2;
   let i = 0;
@@ -49,29 +48,34 @@ function seedFarm() {
       const id = `bed-${i++}`;
       const x = LANDMARKS.farm.x + c * 6;
       const y = LANDMARKS.farm.y + r * 6;
-      stmt.run(id, x, y, 'empty', null, null);
+      await db.execute({
+        sql: 'INSERT INTO farm_beds (id, x, y, stage, planted_by, planted_at) VALUES (?,?,?,?,?,?)',
+        args: [id, x, y, 'empty', null, null]
+      });
     }
   }
 }
 
-function seedKitchen() {
-  db.prepare('INSERT OR IGNORE INTO kitchen (id, produce, meals, harvested_total, delivered_total, cooked_total) VALUES (1,4,3,0,0,0)').run();
-}
-
-function seedGoal() {
-  db.prepare('INSERT INTO goal (id, title, description, target, progress) VALUES (?,?,?,?,0)').run(
-    'settle-the-island',
-    'Settle the island',
-    'Working together, the Sparks are claiming plots and building them up piece by piece into a living shared village.',
-    120
+async function seedKitchen() {
+  await db.execute(
+    'INSERT OR IGNORE INTO kitchen (id, produce, meals, harvested_total, delivered_total, cooked_total) VALUES (1,4,3,0,0,0)'
   );
 }
 
-function seedPlots(agentIds: string[]) {
+async function seedGoal() {
+  await db.execute({
+    sql: 'INSERT INTO goal (id, title, description, target, progress) VALUES (?,?,?,?,0)',
+    args: [
+      'settle-the-island',
+      'Settle the island',
+      'Working together, the Sparks are claiming plots and building them up piece by piece into a living shared village.',
+      120
+    ]
+  });
+}
+
+async function seedPlots(agentIds: string[]) {
   const buildings = pickPlotBuildings(24);
-  const stmt = db.prepare(
-    'INSERT INTO plots (id, building_id, centroid_x, centroid_y, claimed_by, name, grid_cols, grid_rows, cell_size, pieces) VALUES (?,?,?,?,?,?,?,?,?,?)'
-  );
   let claimedCount = 0;
   for (const b of buildings) {
     const [cx, cy] = centroid(b.footprint);
@@ -89,12 +93,15 @@ function seedPlots(agentIds: string[]) {
       }
       claimedCount++;
     }
-    stmt.run(`plot-${b.id}`, b.id, cx, cy, claimedBy, name, 4, 4, 2.5, JSON.stringify(pieces));
+    await db.execute({
+      sql: 'INSERT INTO plots (id, building_id, centroid_x, centroid_y, claimed_by, name, grid_cols, grid_rows, cell_size, pieces) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      args: [`plot-${b.id}`, b.id, cx, cy, claimedBy, name, 4, 4, 2.5, JSON.stringify(pieces)]
+    });
   }
   return { total: buildings.length, claimed: claimedCount };
 }
 
-function seedAgents(): string[] {
+async function seedAgents(): Promise<string[]> {
   const ids: string[] = [];
   for (const s of SEEDED) {
     const angle = Math.random() * Math.PI * 2;
@@ -121,26 +128,30 @@ function seedAgents(): string[] {
       lastActionAt: 0,
       createdAt: Date.now()
     };
-    insertAgent(agent);
-    insertEvent(agent.id, agent.name, 'arrival', `${agent.name} settled into the village as a ${s.role}.`);
+    await insertAgent(agent);
+    await insertEvent(agent.id, agent.name, 'arrival', `${agent.name} settled into the village as a ${s.role}.`);
     ids.push(agent.id);
   }
   return ids;
 }
 
-function main() {
-  if (getAgents().length > 0 && !FORCE) {
+async function main() {
+  const existing = await getAgents();
+  if (existing.length > 0 && !FORCE) {
     console.log('World already seeded. Re-run with --reset to wipe and reseed.');
     return;
   }
-  if (FORCE) resetAll();
-  seedFarm();
-  seedKitchen();
-  seedGoal();
-  const agentIds = seedAgents();
-  const { total, claimed } = seedPlots(agentIds);
+  if (FORCE) await resetAll();
+  await seedFarm();
+  await seedKitchen();
+  await seedGoal();
+  const agentIds = await seedAgents();
+  const { total, claimed } = await seedPlots(agentIds);
   console.log(`Seeded ${SEEDED.length} residents, ${total} plots (${claimed} pre-claimed), 6 garden beds, 1 shared goal.`);
   console.log('Roles available:', ROLES.join(', '));
 }
 
-main();
+main().catch((err) => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});

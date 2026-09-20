@@ -6,5 +6,5 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const limit = Number(url.searchParams.get('limit') ?? 60);
-  return NextResponse.json({ events: getRecentEvents(Math.min(200, Math.max(1, limit))) });
+  return NextResponse.json({ events: await getRecentEvents(Math.min(200, Math.max(1, limit))) });
 }

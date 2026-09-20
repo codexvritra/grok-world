@@ -5,9 +5,10 @@ import { ROLES, PIECE_COST } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  const [farm, kitchen] = await Promise.all([getFarmBeds(), getKitchen()]);
   return NextResponse.json({
-    farm: getFarmBeds(),
-    kitchen: getKitchen(),
+    farm,
+    kitchen,
     roles: ROLES,
     pieceCosts: PIECE_COST,
     rules: {
