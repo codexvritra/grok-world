@@ -24,8 +24,11 @@ const ARRIVE_EPS = 1.5;
 // Serverless hosts (Vercel) have no persistent process to tick every 3s, so
 // each request "catches up" the world by however many ticks elapsed since the
 // last one anyone ran, capped so a long-idle world doesn't trigger a huge
-// synchronous burst on whoever happens to load it next.
-const MAX_CATCHUP_TICKS = 40;
+// synchronous burst on whoever happens to load it next. Kept small because
+// every tick is several sequential round trips to a remote DB (Turso) — a
+// large cap risks a single request running long enough to hit the platform's
+// function timeout.
+const MAX_CATCHUP_TICKS = 8;
 
 export const LANDMARKS = {
   square: { x: 0, y: 0 },
@@ -305,9 +308,7 @@ async function recomputeGoalProgress() {
 }
 
 export async function tick(): Promise<void> {
-  const agents = await getAgents();
-  const beds = await getFarmBeds();
-  const plots = await getPlots();
+  const [agents, beds, plots] = await Promise.all([getAgents(), getFarmBeds(), getPlots()]);
 
   for (const agent of agents) {
     if (agent.paused) continue;
@@ -360,13 +361,17 @@ export async function catchUpTicks(): Promise<number> {
   if (elapsed <= 0) return 0;
 
   const toRun = Math.min(elapsed, MAX_CATCHUP_TICKS);
+  // Claim this catch-up window up front, before running any ticks. The
+  // frontend polls /api/state every ~2.5-3s and can have several visitors at
+  // once, so without this, every request that lands while a catch-up is in
+  // flight sees the same stale last-tick time, decides it also needs to
+  // replay the whole backlog, and piles on concurrent overlapping writes
+  // against the remote DB — which is what was hanging every request for the
+  // full 300s function timeout instead of ever finishing.
+  await setLastTickAt(now);
   for (let i = 0; i < toRun; i++) {
     await tick();
   }
-  // Always advance to `now`, even when capped — a long-idle world loses that
-  // idle time rather than replaying a potentially huge backlog on whoever
-  // happens to load it next.
-  await setLastTickAt(now);
   return toRun;
 }
 
