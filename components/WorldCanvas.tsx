@@ -418,8 +418,12 @@ export default function WorldCanvas({
     camera.updateProjectionMatrix();
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Capped conservatively: a high pixel-ratio cap combined with a large
+    // shadow map can exceed GPU memory/texture limits on weaker hardware and
+    // kill the WebGL context outright (canvas goes blank), which is a much
+    // worse failure mode than a slightly softer image.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -437,7 +441,7 @@ export default function WorldCanvas({
     const sun = new THREE.DirectionalLight(0xfff0d0, 1.5);
     sun.position.set(140, 170, 80);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(4096, 4096);
+    sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -230;
     sun.shadow.camera.right = 230;
     sun.shadow.camera.top = 230;
@@ -632,6 +636,21 @@ export default function WorldCanvas({
     window.addEventListener('pointerup', onPointerUp);
     dom.addEventListener('wheel', onWheel, { passive: false });
 
+    // If the GPU/driver kills the context (out of memory, driver reset, too
+    // many contexts open, etc.) the canvas would otherwise go blank forever.
+    // preventDefault() tells the browser we want it back; the render loop
+    // above keeps calling renderer.render() every frame regardless, so it
+    // just resumes drawing once the context comes back.
+    const onContextLost = (e: Event) => {
+      e.preventDefault();
+      console.warn('[world] WebGL context lost — will resume automatically if the browser restores it.');
+    };
+    const onContextRestored = () => {
+      console.info('[world] WebGL context restored.');
+    };
+    dom.addEventListener('webglcontextlost', onContextLost);
+    dom.addEventListener('webglcontextrestored', onContextRestored);
+
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -639,6 +658,8 @@ export default function WorldCanvas({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       dom.removeEventListener('wheel', onWheel);
+      dom.removeEventListener('webglcontextlost', onContextLost);
+      dom.removeEventListener('webglcontextrestored', onContextRestored);
       renderer.dispose();
       container.removeChild(renderer.domElement);
     };
