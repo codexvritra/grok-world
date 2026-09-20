@@ -3,10 +3,19 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { AgentDTO, FarmBedDTO, PlotDTO, LocationDTO } from '@/lib/clientTypes';
+import { TICK_MS, WALK_SPEED } from '@/lib/simConstants';
+
+// Agents only get a fresh authoritative x/y from the server once per tick, in
+// WALK_SPEED-per-tick jumps — driving the mesh straight off that would look
+// like a snap-then-freeze every poll. Instead we dead-reckon: walk the mesh
+// continuously toward the server's own stated destination (targetX/targetY)
+// at this same real-world speed every frame, and only gently nudge it toward
+// the latest authoritative position to correct for drift.
+const WALK_SPEED_MPS = WALK_SPEED / (TICK_MS / 1000);
 
 /** Procedural grass texture: a mottled green tile, repeated across the ground disk. */
 function createGrassTexture(): THREE.CanvasTexture {
-  const size = 256;
+  const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
@@ -14,14 +23,22 @@ function createGrassTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#6fae52';
   ctx.fillRect(0, 0, size, size);
   const blobColors = ['#7cb85f', '#63a047', '#82c26a', '#5c9640'];
-  for (let i = 0; i < 260; i++) {
+  for (let i = 0; i < 900; i++) {
     ctx.fillStyle = blobColors[i % blobColors.length];
-    ctx.globalAlpha = 0.25 + Math.random() * 0.25;
+    ctx.globalAlpha = 0.22 + Math.random() * 0.25;
     const x = Math.random() * size;
     const y = Math.random() * size;
-    const r = 3 + Math.random() * 7;
+    const r = 5 + Math.random() * 14;
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * 0.6, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // fine speckle pass for extra texture detail at close zoom
+  for (let i = 0; i < 1400; i++) {
+    ctx.fillStyle = blobColors[(i + 2) % blobColors.length];
+    ctx.globalAlpha = 0.12 + Math.random() * 0.15;
+    ctx.beginPath();
+    ctx.arc(Math.random() * size, Math.random() * size, 1 + Math.random() * 2.5, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;
@@ -35,17 +52,17 @@ function createGrassTexture(): THREE.CanvasTexture {
 
 /** Soft round cloud sprite, drawn once and reused on a handful of billboards. */
 function createCloudTexture(): THREE.CanvasTexture {
-  const size = 256;
+  const size = 512;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const blobs: [number, number, number][] = [
-    [90, 150, 55],
-    [140, 130, 65],
-    [180, 155, 48],
-    [115, 170, 50],
-    [165, 175, 46]
+    [180, 300, 110],
+    [280, 260, 130],
+    [360, 310, 96],
+    [230, 340, 100],
+    [330, 350, 92]
   ];
   for (const [x, y, r] of blobs) {
     const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
@@ -360,7 +377,7 @@ export default function WorldCanvas({
   const rendererRef = useRef<THREE.WebGLRenderer>();
   const sunRef = useRef<THREE.DirectionalLight>();
   const hemiRef = useRef<THREE.HemisphereLight>();
-  const agentMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const agentMeshesRef = useRef<Map<string, THREE.Group>>(new Map());
   const plotAnchorsRef = useRef<Map<string, THREE.Vector3>>(new Map());
   const plotInfoRef = useRef<Map<string, { name: string; icon: string }>>(new Map());
   const raycasterRef = useRef(new THREE.Raycaster());
@@ -401,13 +418,17 @@ export default function WorldCanvas({
     camera.updateProjectionMatrix();
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
 
     const hemi = new THREE.HemisphereLight(0xfff3d9, 0x9fc7b8, 0.75);
     scene.add(hemi);
@@ -416,7 +437,7 @@ export default function WorldCanvas({
     const sun = new THREE.DirectionalLight(0xfff0d0, 1.5);
     sun.position.set(140, 170, 80);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(4096, 4096);
     sun.shadow.camera.left = -230;
     sun.shadow.camera.right = 230;
     sun.shadow.camera.top = 230;
@@ -436,7 +457,8 @@ export default function WorldCanvas({
 
     // grass ground disk
     const grassTexture = createGrassTexture();
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(215, 64), new THREE.MeshStandardMaterial({ map: grassTexture }));
+    grassTexture.anisotropy = maxAniso;
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(215, 96), new THREE.MeshStandardMaterial({ map: grassTexture }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
@@ -479,11 +501,29 @@ export default function WorldCanvas({
       const dt = lastFrameT ? Math.min(0.1, (t - lastFrameT) / 1000) : 0;
       lastFrameT = t;
 
-      for (const mesh of agentMeshesRef.current.values()) {
-        const target = mesh.userData.target as THREE.Vector3 | undefined;
-        if (target) mesh.position.lerp(target, 0.08);
-        const bob = mesh.userData.walking ? Math.sin(t / 150 + (mesh.userData.seed ?? 0)) * 0.5 : 0;
-        mesh.position.y = (mesh.userData.baseY ?? 2.2) + bob;
+      for (const group of agentMeshesRef.current.values()) {
+        const u = group.userData;
+        if (u.walking && dt > 0) {
+          const dx = (u.destX ?? u.simX) - u.simX;
+          const dy = (u.destY ?? u.simY) - u.simY;
+          const dist = Math.hypot(dx, dy);
+          const step = WALK_SPEED_MPS * dt;
+          if (dist > 0.05) u.facing = Math.atan2(dy, dx);
+          if (dist > step) {
+            u.simX += (dx / dist) * step;
+            u.simY += (dy / dist) * step;
+          } else {
+            u.simX = u.destX ?? u.simX;
+            u.simY = u.destY ?? u.simY;
+          }
+        }
+        group.position.set(u.simX ?? 0, 0, -(u.simY ?? 0));
+
+        const characterRoot = u.characterRoot as THREE.Object3D | undefined;
+        if (characterRoot) {
+          characterRoot.position.y = u.walking ? Math.sin(t / 150 + (u.seed ?? 0)) * 0.35 : 0;
+          characterRoot.rotation.y = u.facing ?? characterRoot.rotation.y;
+        }
       }
 
       for (const cloud of cloudGroup.children) {
@@ -505,10 +545,12 @@ export default function WorldCanvas({
           if (!Number.isFinite(sx) || !Number.isFinite(sy)) return null;
           return { sx, sy };
         };
-        for (const [id, mesh] of agentMeshesRef.current.entries()) {
-          const p = project(mesh.position);
+        for (const [id, group] of agentMeshesRef.current.entries()) {
+          const headPos = group.position.clone();
+          headPos.y += 3.9;
+          const p = project(headPos);
           if (!p) continue;
-          next.push({ id, x: p.sx, y: p.sy, text: mesh.userData.name, kind: 'agent', icon: '', color: mesh.userData.color, external: mesh.userData.external });
+          next.push({ id, x: p.sx, y: p.sy, text: group.userData.name, kind: 'agent', icon: '', color: group.userData.color, external: group.userData.external });
         }
         for (const [id, anchor] of plotAnchorsRef.current.entries()) {
           const p = project(anchor);
@@ -558,10 +600,12 @@ export default function WorldCanvas({
       pointerRef.current.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       pointerRef.current.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycasterRef.current.setFromCamera(pointerRef.current, camera);
-      const meshes = Array.from(agentMeshesRef.current.values());
-      const hits = raycasterRef.current.intersectObjects(meshes);
+      const groups = Array.from(agentMeshesRef.current.values());
+      const hits = raycasterRef.current.intersectObjects(groups, true);
       if (hits.length > 0) {
-        onSelectAgent(hits[0].object.userData.id);
+        let obj: THREE.Object3D | null = hits[0].object;
+        while (obj && !obj.userData.id) obj = obj.parent;
+        if (obj) onSelectAgent(obj.userData.id);
         onSelectPlot(null);
       } else {
         onSelectAgent(null);
@@ -802,7 +846,7 @@ export default function WorldCanvas({
     };
   }, [plots]);
 
-  // --- agents: create/update/remove meshes ---
+  // --- agents: create/update/remove character groups ---
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
@@ -811,36 +855,76 @@ export default function WorldCanvas({
 
     agents.forEach((a, idx) => {
       seen.add(a.id);
-      let mesh = existing.get(a.id);
+      let group = existing.get(a.id);
       const color = ROLE_COLORS[a.role] ?? 0xffffff;
-      if (!mesh) {
-        mesh = new THREE.Mesh(
-          new THREE.CapsuleGeometry(1, 1.6, 4, 8),
+
+      if (!group) {
+        group = new THREE.Group();
+        group.position.copy(toWorld(a.x, a.y, 0));
+
+        const shadow = shadowMesh(0, 0, 1.15);
+        shadow.position.set(0, 0.05, 0);
+        group.add(shadow);
+
+        const characterRoot = new THREE.Group();
+        group.add(characterRoot);
+
+        const body = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.55, 1.3, 6, 12),
           new THREE.MeshStandardMaterial({ color })
         );
-        mesh.userData.baseY = 2.2;
-        mesh.position.copy(toWorld(a.x, a.y, 2.2));
-        mesh.castShadow = true;
-        scene.add(mesh);
-        existing.set(a.id, mesh);
+        body.position.y = 1.2;
+        body.castShadow = true;
+        characterRoot.add(body);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 14), new THREE.MeshStandardMaterial({ color: 0xf3d9bd }));
+        head.position.y = 2.75;
+        head.castShadow = true;
+        characterRoot.add(head);
+
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2b });
+        for (const side of [-1, 1]) {
+          const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), eyeMat);
+          eye.position.set(side * 0.18, 2.8, 0.44);
+          characterRoot.add(eye);
+        }
+
+        group.userData.characterRoot = characterRoot;
+        group.userData.bodyMesh = body;
+        group.userData.simX = a.x;
+        group.userData.simY = a.y;
+        group.userData.facing = 0;
+        scene.add(group);
+        existing.set(a.id, group);
       }
-      mesh.userData.id = a.id;
-      mesh.userData.name = a.name;
-      mesh.userData.color = `#${color.toString(16).padStart(6, '0')}`;
-      mesh.userData.walking = a.status === 'walking';
-      mesh.userData.seed = idx;
-      mesh.userData.external = a.source === 'external';
-      mesh.userData.target = toWorld(a.x, a.y, 2.2);
-      (mesh.material as THREE.MeshStandardMaterial).color.set(color);
-      const scale = a.id === selectedAgentId ? 1.35 : 1;
-      mesh.scale.set(scale, scale, scale);
+
+      group.userData.id = a.id;
+      group.userData.name = a.name;
+      group.userData.color = `#${color.toString(16).padStart(6, '0')}`;
+      group.userData.walking = a.status === 'walking';
+      group.userData.seed = idx;
+      group.userData.external = a.source === 'external';
+      // gently correct client-predicted position toward the authoritative
+      // server position instead of snapping, so drift never compounds
+      group.userData.simX += (a.x - group.userData.simX) * 0.25;
+      group.userData.simY += (a.y - group.userData.simY) * 0.25;
+      group.userData.destX = a.status === 'walking' ? a.targetX ?? a.x : a.x;
+      group.userData.destY = a.status === 'walking' ? a.targetY ?? a.y : a.y;
+
+      (group.userData.bodyMesh.material as THREE.MeshStandardMaterial).color.set(color);
+      const scale = a.id === selectedAgentId ? 1.3 : 1;
+      (group.userData.characterRoot as THREE.Group).scale.set(scale, scale, scale);
     });
 
-    for (const [id, mesh] of existing.entries()) {
+    for (const [id, group] of existing.entries()) {
       if (!seen.has(id)) {
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+        scene.remove(group);
+        group.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.geometry.dispose();
+            (obj.material as THREE.Material).dispose();
+          }
+        });
         existing.delete(id);
       }
     }

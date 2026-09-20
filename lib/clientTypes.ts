@@ -5,6 +5,8 @@ export interface AgentDTO {
   source: 'seeded' | 'external';
   x: number;
   y: number;
+  targetX: number | null;
+  targetY: number | null;
   place: string;
   status: string;
   action: string;

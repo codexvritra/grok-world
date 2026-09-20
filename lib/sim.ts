@@ -16,9 +16,9 @@ import {
 import type { Agent, FarmBed, Plot } from './types';
 import { PIECE_COST } from './types';
 import { generatePlaceName } from './names';
+import { TICK_MS, WALK_SPEED } from './simConstants';
 
-export const TICK_MS = 3000;
-const WALK_SPEED = 2.2; // meters per tick
+export { TICK_MS };
 const ARRIVE_EPS = 1.5;
 // Serverless hosts (Vercel) have no persistent process to tick every 3s, so
 // each request "catches up" the world by however many ticks elapsed since the

@@ -17,6 +17,8 @@ export async function GET() {
     source: a.source,
     x: a.x,
     y: a.y,
+    targetX: a.targetX,
+    targetY: a.targetY,
     place: a.place,
     status: a.status,
     action: a.action,
