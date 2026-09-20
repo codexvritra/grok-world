@@ -124,6 +124,12 @@ CREATE TABLE IF NOT EXISTS idempotency (
 );
 `
       )
+      .then(() =>
+        // CREATE TABLE IF NOT EXISTS doesn't add columns to a table that
+        // already existed (e.g. a pre-existing database on a persistent
+        // volume) — patch those in by hand, ignoring "already there".
+        db.execute('ALTER TABLE goal ADD COLUMN last_tick_at INTEGER NOT NULL DEFAULT 0').catch(() => undefined)
+      )
       .then(() => undefined);
   }
   return g.__grokDbInit;
