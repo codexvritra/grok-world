@@ -127,6 +127,11 @@ CREATE TABLE IF NOT EXISTS idempotency (
   ts INTEGER NOT NULL,
   PRIMARY KEY (agent_id, action_id)
 );
+
+CREATE TABLE IF NOT EXISTS presence (
+  session_id TEXT PRIMARY KEY,
+  last_seen INTEGER NOT NULL
+);
 `
         )
       )
@@ -354,6 +359,25 @@ export async function getLastTickAt(): Promise<number> {
 export async function setLastTickAt(ts: number): Promise<void> {
   await ensureInit();
   await db.execute({ sql: 'UPDATE goal SET last_tick_at = ?', args: [ts] });
+}
+
+const PRESENCE_WINDOW_MS = 30_000;
+
+export async function touchPresence(sessionId: string): Promise<void> {
+  await ensureInit();
+  const now = Date.now();
+  await db.execute({
+    sql: 'INSERT INTO presence (session_id, last_seen) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET last_seen = excluded.last_seen',
+    args: [sessionId, now]
+  });
+  // opportunistic cleanup so the table doesn't grow forever
+  await db.execute({ sql: 'DELETE FROM presence WHERE last_seen < ?', args: [now - PRESENCE_WINDOW_MS * 4] });
+}
+
+export async function countActivePresence(): Promise<number> {
+  await ensureInit();
+  const r = await db.execute({ sql: 'SELECT COUNT(*) AS c FROM presence WHERE last_seen > ?', args: [Date.now() - PRESENCE_WINDOW_MS] });
+  return Number((r.rows[0] as any)?.c ?? 0);
 }
 
 export async function issueChallengeNonce(nonce: string): Promise<void> {

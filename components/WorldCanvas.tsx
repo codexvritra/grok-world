@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { AgentDTO, FarmBedDTO, PlotDTO, LocationDTO } from '@/lib/clientTypes';
 import { TICK_MS, WALK_SPEED } from '@/lib/simConstants';
@@ -290,6 +290,11 @@ interface Props {
   onSelectPlot: (id: string | null) => void;
 }
 
+export interface WorldCanvasHandle {
+  zoomBy: (factor: number) => void;
+  resetView: () => void;
+}
+
 interface Label {
   id: string;
   x: number;
@@ -380,17 +385,10 @@ function placeIcon(plot: PlotDTO): string {
   return '●';
 }
 
-export default function WorldCanvas({
-  agents,
-  farm,
-  plots,
-  location,
-  dayNight,
-  zoomLevel,
-  selectedAgentId,
-  onSelectAgent,
-  onSelectPlot
-}: Props) {
+const WorldCanvas = forwardRef<WorldCanvasHandle, Props>(function WorldCanvas(
+  { agents, farm, plots, location, dayNight, zoomLevel, selectedAgentId, onSelectAgent, onSelectPlot },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene>();
   const cameraRef = useRef<THREE.OrthographicCamera>();
@@ -414,6 +412,25 @@ export default function WorldCanvas({
   const panRef = useRef({ x: 0, z: 0 });
   const zoomRef = useRef(1.6);
   const [labels, setLabels] = useState<Label[]>([]);
+
+  useImperativeHandle(ref, () => ({
+    zoomBy(factor: number) {
+      const camera = cameraRef.current;
+      if (!camera) return;
+      camera.zoom = Math.max(0.4, Math.min(5.5, camera.zoom * factor));
+      camera.updateProjectionMatrix();
+    },
+    resetView() {
+      const camera = cameraRef.current;
+      if (!camera) return;
+      panRef.current.x = 0;
+      panRef.current.z = 0;
+      camera.position.set(260, 320, 260);
+      camera.lookAt(0, 0, 0);
+      camera.zoom = zoomRef.current;
+      camera.updateProjectionMatrix();
+    }
+  }));
 
   useEffect(() => {
     zoomRef.current = zoomLevel === 'village' ? 1.6 : 0.6;
@@ -1132,4 +1149,6 @@ export default function WorldCanvas({
       )}
     </div>
   );
-}
+});
+
+export default WorldCanvas;

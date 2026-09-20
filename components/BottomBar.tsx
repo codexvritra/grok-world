@@ -1,14 +1,7 @@
 'use client';
 
 import type { AgentDTO } from '@/lib/clientTypes';
-
-const ROLE_COLORS: Record<string, string> = {
-  farmer: '#8fbf7a',
-  gatherer: '#f2b95a',
-  builder: '#e08e6d',
-  cook: '#b79ae8',
-  wanderer: '#7fb8d9'
-};
+import Avatar from './Avatar';
 
 export default function BottomBar({
   agents,
@@ -25,7 +18,7 @@ export default function BottomBar({
       className="bottom-bar"
       style={{
         position: 'absolute',
-        bottom: 16,
+        bottom: 82,
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
@@ -41,25 +34,7 @@ export default function BottomBar({
       >
         <div style={{ display: 'flex' }}>
           {preview.map((a, i) => (
-            <div
-              key={a.id}
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                background: ROLE_COLORS[a.role] ?? '#ccc',
-                border: '2px solid white',
-                marginLeft: i === 0 ? 0 : -10,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 700,
-                color: '#2c2c2c'
-              }}
-            >
-              {a.name[0]}
-            </div>
+            <Avatar key={a.id} role={a.role} size={26} style={{ marginLeft: i === 0 ? 0 : -10 }} />
           ))}
         </div>
         <div style={{ textAlign: 'left' }}>

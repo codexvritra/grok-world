@@ -2,14 +2,7 @@
 
 import { useState } from 'react';
 import type { AgentDTO } from '@/lib/clientTypes';
-
-const ROLE_COLORS: Record<string, string> = {
-  farmer: '#8fbf7a',
-  gatherer: '#f2b95a',
-  builder: '#e08e6d',
-  cook: '#b79ae8',
-  wanderer: '#7fb8d9'
-};
+import Avatar from './Avatar';
 
 function LifeBar({ label, value }: { label: string; value: number }) {
   return (
@@ -43,21 +36,7 @@ export default function ResidentsModal({ agents, onClose }: { agents: AgentDTO[]
               onClick={() => setExpanded(expanded === a.id ? null : a.id)}
               style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, background: 'none', border: 'none', textAlign: 'left' }}
             >
-              <div
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 999,
-                  background: ROLE_COLORS[a.role] ?? '#ccc',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  fontSize: 12
-                }}
-              >
-                {a.name[0]}
-              </div>
+              <Avatar role={a.role} size={30} external={a.source === 'external'} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>
                   {a.source === 'external' ? '✦ ' : ''}

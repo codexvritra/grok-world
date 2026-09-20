@@ -18,8 +18,8 @@ export default function IslandMomentToast({ event, onOpenJournal }: { event: Jou
       style={{
         position: 'absolute',
         left: 16,
-        bottom: 16,
-        maxWidth: 340,
+        bottom: 148,
+        maxWidth: 'min(340px, calc(100vw - 32px))',
         padding: '14px 16px',
         display: 'flex',
         gap: 12,

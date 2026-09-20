@@ -89,20 +89,13 @@ button {
   }
 }
 
-/* Narrow viewports: the brand header and control cluster are two independent
-   floating elements (top-left / top-right) that would otherwise collide. */
 @media (max-width: 720px) {
-  .brand-tagline,
-  .brand-status {
-    display: none;
-  }
   .join-btn {
     padding: 0 12px !important;
     font-size: 12px !important;
   }
-  .online-pill {
-    padding: 8px 10px !important;
-    font-size: 12px !important;
+  .status-pill {
+    font-size: 11px !important;
   }
 }
 
@@ -110,15 +103,33 @@ button {
   .brand-header {
     padding: 8px 10px !important;
   }
+  .brand-header span {
+    font-size: 14px !important;
+  }
   .control-cluster .icon-btn {
     width: 34px;
     height: 34px;
     font-size: 14px;
   }
-  .join-btn .join-label {
-    display: none;
+  .status-pill {
+    max-width: calc(100vw - 32px);
+    overflow-x: auto;
+    font-size: 10.5px !important;
+    gap: 6px !important;
   }
-  .online-pill {
-    display: none !important;
+  .status-pill button {
+    padding: 5px 8px !important;
+    font-size: 10.5px !important;
+  }
+  .tab-bar {
+    max-width: calc(100vw - 24px);
+  }
+  .tab-bar button {
+    padding: 6px 6px !important;
+    font-size: 9px !important;
+    gap: 1px !important;
+  }
+  .tab-bar button span {
+    font-size: 13px !important;
   }
 }
