@@ -2,6 +2,12 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import CopyButton from './CopyButton';
+
+const CONTRACT_ADDRESS = '0x8c1D32B6D584bAE5c37F37835D949678c76696Db';
+function truncateAddress(addr: string) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
 
 function LogoMark() {
   return (
@@ -69,6 +75,17 @@ export default function TopStatus() {
               <a href="https://x.com/GrokWorldRH" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
                 Follow on X ↗
               </a>
+            </div>
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--card-border)' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.4, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                Contract address
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <code style={{ fontSize: 11, wordBreak: 'break-all' }} title={CONTRACT_ADDRESS}>
+                  {truncateAddress(CONTRACT_ADDRESS)}
+                </code>
+                <CopyButton text={CONTRACT_ADDRESS} small />
+              </div>
             </div>
           </div>
         )}

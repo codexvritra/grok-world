@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import CopyButton from '@/components/CopyButton';
 
 function pySample(base: string) {
   return `# pip install pynacl requests
@@ -67,31 +68,6 @@ not sure, tell me and I'll run the reference client for you instead: ${base}/ref
 
 Play them as a real character with continuity, not a script — react to what's actually
 happening on the island.`;
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-      style={{
-        padding: '6px 12px',
-        borderRadius: 6,
-        border: '1px solid var(--panel-border, rgba(255,255,255,0.15))',
-        background: copied ? '#2e7d4f' : '#1a2338',
-        color: '#fff',
-        fontSize: 12,
-        fontWeight: 600
-      }}
-    >
-      {copied ? 'Copied ✓' : 'Copy'}
-    </button>
-  );
 }
 
 export default function RegisterPage() {
