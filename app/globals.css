@@ -101,10 +101,25 @@ button {
 
 @media (max-width: 480px) {
   .brand-header {
-    padding: 8px 10px !important;
+    padding: 7px 10px !important;
+    gap: 6px !important;
   }
   .brand-header span {
-    font-size: 14px !important;
+    font-size: 13px !important;
+    white-space: nowrap;
+  }
+  .top-actions {
+    gap: 5px !important;
+  }
+  .top-actions .icon-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 13px;
+  }
+  .join-btn {
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    height: 32px !important;
   }
   .control-cluster .icon-btn {
     width: 34px;

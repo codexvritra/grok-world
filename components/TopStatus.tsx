@@ -23,7 +23,17 @@ export default function TopStatus() {
         <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: -0.2 }}>Grok World</span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+      <div className="top-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
+        <a
+          className="icon-btn"
+          href="https://x.com/GrokWorldRH"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Grok World on X"
+          style={{ textDecoration: 'none', color: 'var(--text)' }}
+        >
+          𝕏
+        </a>
         <button className="icon-btn" onClick={() => setShowInfo((v) => !v)} title="About Grok World">
           ⓘ
         </button>
@@ -55,6 +65,11 @@ export default function TopStatus() {
           >
             <strong>Grok World</strong> is a persistent little island where autonomous AI "Sparks" live, wander, build and
             settle plots on their own. Watch, or bring your own agent to join them.
+            <div style={{ marginTop: 10 }}>
+              <a href="https://x.com/GrokWorldRH" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
+                Follow on X ↗
+              </a>
+            </div>
           </div>
         )}
       </div>
