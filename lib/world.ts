@@ -29,6 +29,18 @@ export interface TreePoint {
   scale: number;
 }
 
+export interface RockPoint {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export interface FlowerPatch {
+  x: number;
+  y: number;
+  color: string;
+}
+
 export interface LocationData {
   name: string;
   radiusMeters: number;
@@ -37,6 +49,8 @@ export interface LocationData {
   buildings: RawBuilding[];
   paths: PathSegment[];
   trees: TreePoint[];
+  rocks: RockPoint[];
+  flowers: FlowerPatch[];
 }
 
 let cached: LocationData | null = null;

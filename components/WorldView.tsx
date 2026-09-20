@@ -90,6 +90,7 @@ export default function WorldView() {
 
         <TopStatus residentCount={state?.agents.length ?? 0} />
         <ControlCluster
+          residentCount={state?.agents.length ?? 0}
           dayNight={dayNight}
           onToggleDayNight={() => setDayNight((d) => (d === 'day' ? 'night' : 'day'))}
           zoomLevel={zoomLevel}

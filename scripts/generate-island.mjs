@@ -31,8 +31,10 @@ const CLUSTER_CENTERS = [
   { x: 90, y: 60 }
 ];
 
-const WALL_COLORS = ['#e8dcc3', '#eee3cf', '#e3d5b8', '#f2e8d5', '#ddcfae', '#e6d2c3'];
-const ROOF_COLORS = ['#c17b53', '#8a9a5b', '#b0684a', '#7a8471', '#a0522d', '#6b8e78', '#9c6b4f'];
+const WALL_COLORS = ['#f2ead9', '#eee3cf', '#f5efe1', '#f2e8d5', '#ede0c8', '#f0e6d6'];
+// Warm terracotta and cool teal-green, alternating — matches the reference's
+// two-tone roof palette instead of a wide scattershot of browns.
+const ROOF_COLORS = ['#e0733f', '#3f7f6e', '#d9652f', '#4a8a72', '#e5793f', '#356f61'];
 const KINDS = ['house', 'house', 'house', 'studio', 'farmhouse', 'workshop'];
 
 function rectFootprint(cx, cy, w, d, angle) {
@@ -151,9 +153,45 @@ function generateTrees(buildings) {
   return trees;
 }
 
+function generateRocks(buildings) {
+  const rocks = [];
+  let tries = 0;
+  while (rocks.length < 26 && tries < 2000) {
+    tries++;
+    const angle = range(0, Math.PI * 2);
+    const r = range(10, ISLAND_RADIUS * 0.9);
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    if (pointInsideAnyBuilding(x, y, buildings)) continue;
+    rocks.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, scale: range(0.6, 1.4) });
+  }
+  return rocks;
+}
+
+function generateFlowerPatches(buildings) {
+  const patches = [];
+  let tries = 0;
+  while (patches.length < 35 && tries < 2000) {
+    tries++;
+    const angle = range(0, Math.PI * 2);
+    const r = range(10, ISLAND_RADIUS * 0.88);
+    const x = Math.cos(angle) * r;
+    const y = Math.sin(angle) * r;
+    if (pointInsideAnyBuilding(x, y, buildings)) continue;
+    patches.push({
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+      color: pick(['#f2c94c', '#eb5e8d', '#f2f2f2', '#f28cb1'])
+    });
+  }
+  return patches;
+}
+
 const buildings = generateBuildings(22);
 const paths = nearestNeighborPaths(buildings);
 const trees = generateTrees(buildings);
+const rocks = generateRocks(buildings);
+const flowers = generateFlowerPatches(buildings);
 
 mkdirSync('data', { recursive: true });
 writeFileSync(
@@ -166,10 +204,14 @@ writeFileSync(
       fetchedAt: new Date().toISOString(),
       buildings,
       paths,
-      trees
+      trees,
+      rocks,
+      flowers
     },
     null,
     2
   )
 );
-console.log(`Generated ${buildings.length} buildings, ${paths.length} path segments, ${trees.length} trees.`);
+console.log(
+  `Generated ${buildings.length} buildings, ${paths.length} path segments, ${trees.length} trees, ${rocks.length} rocks, ${flowers.length} flower patches.`
+);

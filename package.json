@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node scripts/generate-island.mjs --if-missing && tsx scripts/seed.ts && next start",
+    "start": "node scripts/boot.mjs && node scripts/generate-island.mjs --if-missing && tsx scripts/seed.ts && next start",
     "seed": "tsx scripts/seed.ts",
     "generate-island": "node scripts/generate-island.mjs"
   },

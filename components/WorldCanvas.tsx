@@ -4,6 +4,63 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { AgentDTO, FarmBedDTO, PlotDTO, LocationDTO } from '@/lib/clientTypes';
 
+/** Procedural grass texture: a mottled green tile, repeated across the ground disk. */
+function createGrassTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#6fae52';
+  ctx.fillRect(0, 0, size, size);
+  const blobColors = ['#7cb85f', '#63a047', '#82c26a', '#5c9640'];
+  for (let i = 0; i < 260; i++) {
+    ctx.fillStyle = blobColors[i % blobColors.length];
+    ctx.globalAlpha = 0.25 + Math.random() * 0.25;
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 3 + Math.random() * 7;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.6, Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(40, 40);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/** Soft round cloud sprite, drawn once and reused on a handful of billboards. */
+function createCloudTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const blobs: [number, number, number][] = [
+    [90, 150, 55],
+    [140, 130, 65],
+    [180, 155, 48],
+    [115, 170, 50],
+    [165, 175, 46]
+  ];
+  for (const [x, y, r] of blobs) {
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 const ROLE_COLORS: Record<string, number> = {
   farmer: 0x8fbf7a,
   gatherer: 0xf2b95a,
@@ -372,16 +429,34 @@ export default function WorldCanvas({
     sunRef.current = sun;
 
     // water (everything beyond the island)
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshStandardMaterial({ color: 0x6fc3c9 }));
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), new THREE.MeshStandardMaterial({ color: 0x4fa3d1 }));
     water.rotation.x = -Math.PI / 2;
     water.position.y = -0.2;
     scene.add(water);
 
-    // sand/ground island disk
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(215, 64), new THREE.MeshStandardMaterial({ color: 0xdccd9e }));
+    // grass ground disk
+    const grassTexture = createGrassTexture();
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(215, 64), new THREE.MeshStandardMaterial({ map: grassTexture }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     scene.add(ground);
+
+    // a handful of drifting cloud billboards
+    const cloudTexture = createCloudTexture();
+    const cloudGroup = new THREE.Group();
+    const cloudMat = new THREE.MeshBasicMaterial({ map: cloudTexture, transparent: true, depthWrite: false });
+    for (let i = 0; i < 7; i++) {
+      const scale = 40 + Math.random() * 50;
+      const cloud = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), cloudMat);
+      cloud.scale.set(scale, scale, 1);
+      cloud.rotation.x = -Math.PI / 2;
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * 260;
+      cloud.position.set(Math.cos(angle) * r, 140 + Math.random() * 40, Math.sin(angle) * r);
+      cloud.userData.driftSpeed = 1.5 + Math.random() * 2;
+      cloudGroup.add(cloud);
+    }
+    scene.add(cloudGroup);
 
     let raf = 0;
     const resize = () => {
@@ -398,14 +473,24 @@ export default function WorldCanvas({
     ro.observe(container);
 
     let lastLabelUpdate = 0;
+    let lastFrameT = 0;
     const animate = (t: number) => {
       raf = requestAnimationFrame(animate);
+      const dt = lastFrameT ? Math.min(0.1, (t - lastFrameT) / 1000) : 0;
+      lastFrameT = t;
+
       for (const mesh of agentMeshesRef.current.values()) {
         const target = mesh.userData.target as THREE.Vector3 | undefined;
         if (target) mesh.position.lerp(target, 0.08);
         const bob = mesh.userData.walking ? Math.sin(t / 150 + (mesh.userData.seed ?? 0)) * 0.5 : 0;
         mesh.position.y = (mesh.userData.baseY ?? 2.2) + bob;
       }
+
+      for (const cloud of cloudGroup.children) {
+        cloud.position.x += (cloud.userData.driftSpeed ?? 1) * dt;
+        if (cloud.position.x > 320) cloud.position.x = -320;
+      }
+
       renderer.render(scene, camera);
 
       if (t - lastLabelUpdate > 120) {
@@ -616,6 +701,29 @@ export default function WorldCanvas({
         group.add(foliage);
       }
       group.add(shadowMesh(t.x, t.y, 1.4 * t.scale));
+    }
+
+    for (const r of location.rocks ?? []) {
+      const rock = new THREE.Mesh(
+        new THREE.DodecahedronGeometry(0.7 * r.scale, 0),
+        new THREE.MeshStandardMaterial({ color: 0x9a978d, flatShading: true })
+      );
+      rock.position.copy(toWorld(r.x, r.y, 0.4 * r.scale));
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      group.add(rock);
+      group.add(shadowMesh(r.x, r.y, 0.9 * r.scale));
+    }
+
+    for (const f of location.flowers ?? []) {
+      for (let i = 0; i < 4; i++) {
+        const ox = (Math.random() - 0.5) * 1.2;
+        const oy = (Math.random() - 0.5) * 1.2;
+        const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 5), new THREE.MeshStandardMaterial({ color: f.color }));
+        bloom.position.copy(toWorld(f.x + ox, f.y + oy, 0.2));
+        group.add(bloom);
+      }
     }
 
     scene.add(group);

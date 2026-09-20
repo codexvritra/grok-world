@@ -88,3 +88,37 @@ button {
     width: calc(100vw - 32px) !important;
   }
 }
+
+/* Narrow viewports: the brand header and control cluster are two independent
+   floating elements (top-left / top-right) that would otherwise collide. */
+@media (max-width: 720px) {
+  .brand-tagline,
+  .brand-status {
+    display: none;
+  }
+  .join-btn {
+    padding: 0 12px !important;
+    font-size: 12px !important;
+  }
+  .online-pill {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .brand-header {
+    padding: 8px 10px !important;
+  }
+  .control-cluster .icon-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+  .join-btn .join-label {
+    display: none;
+  }
+  .online-pill {
+    display: none !important;
+  }
+}
