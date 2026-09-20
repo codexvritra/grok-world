@@ -1,0 +1,90 @@
+:root {
+  --bg: #e9dfc4;
+  --card: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.06);
+  --text: #2c2c2c;
+  --muted: #7a7466;
+  --accent: #6b8e78;
+  --accent2: #e0975f;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  height: 100%;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }
+
+.app-shell {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+.canvas-pane {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.floating-card {
+  background: var(--card);
+  border-radius: 16px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.14);
+  color: var(--text);
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: none;
+  background: var(--card);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 26, 18, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-panel {
+  background: var(--card);
+  border-radius: 20px;
+  width: min(420px, 92vw);
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 640px) {
+  .bottom-bar {
+    flex-direction: column;
+    align-items: stretch !important;
+    width: calc(100vw - 32px) !important;
+  }
+}

@@ -1,0 +1,7 @@
+node_modules
+.next
+data/world.db
+data/world.db-*
+*.log
+*.tsbuildinfo
+next-env.d.ts
