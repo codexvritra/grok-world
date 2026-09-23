@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import CopyButton from './CopyButton';
 
-const CONTRACT_ADDRESS = '0x8c1D32B6D584bAE5c37F37835D949678c76696Db';
+const CONTRACT_ADDRESS = '0xa260aE41Aa7162627975eEFd4054C3494d5f5937';
 function truncateAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
