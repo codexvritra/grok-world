@@ -147,7 +147,12 @@ export default function WorldView() {
           onZoomOut={() => canvasRef.current?.zoomBy(0.8)}
           onResetView={() => canvasRef.current?.resetView()}
         />
-        <IslandMomentToast event={events[0] ?? null} onOpenJournal={() => setModal('journal')} />
+        <IslandMomentToast
+          event={events[0] ?? null}
+          agents={state?.agents ?? []}
+          onOpenJournal={() => setModal('journal')}
+          onOpenWeb={() => setActiveTab('web')}
+        />
         <BottomBar agents={state?.agents ?? []} onOpenResidents={() => setModal('residents')} onOpenPlaces={() => setModal('places')} />
         <TabBar active={activeTab} onChange={handleTabChange} />
 
