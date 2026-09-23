@@ -62,7 +62,10 @@ CREATE TABLE IF NOT EXISTS agents (
   friends TEXT NOT NULL DEFAULT '[]',
   paused INTEGER NOT NULL DEFAULT 0,
   last_action_at INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  browsing_url TEXT,
+  browsing_title TEXT,
+  browsing_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS farm_beds (
@@ -142,6 +145,9 @@ CREATE TABLE IF NOT EXISTS presence (
         db.execute('ALTER TABLE goal ADD COLUMN last_tick_at INTEGER NOT NULL DEFAULT 0').catch(() => undefined)
       )
       .then(() => db.execute("ALTER TABLE agents ADD COLUMN waypoints TEXT NOT NULL DEFAULT '[]'").catch(() => undefined))
+      .then(() => db.execute('ALTER TABLE agents ADD COLUMN browsing_url TEXT').catch(() => undefined))
+      .then(() => db.execute('ALTER TABLE agents ADD COLUMN browsing_title TEXT').catch(() => undefined))
+      .then(() => db.execute('ALTER TABLE agents ADD COLUMN browsing_at INTEGER NOT NULL DEFAULT 0').catch(() => undefined))
       .then(() => undefined);
   }
   return g.__grokDbInit;
@@ -171,7 +177,10 @@ function rowToAgent(r: any): Agent {
     friends: JSON.parse(r.friends),
     paused: !!r.paused,
     lastActionAt: r.last_action_at,
-    createdAt: r.created_at
+    createdAt: r.created_at,
+    browsingUrl: r.browsing_url ?? null,
+    browsingTitle: r.browsing_title ?? null,
+    browsingAt: r.browsing_at ?? 0
   };
 }
 
@@ -190,8 +199,8 @@ export async function getAgentById(id: string): Promise<Agent | undefined> {
 export async function insertAgent(a: Agent): Promise<void> {
   await ensureInit();
   await db.execute({
-    sql: `INSERT INTO agents (id,name,role,public_key,source,x,y,place,status,action,intent,target_x,target_y,waypoints,inventory,life,contributions,friends,paused,last_action_at,created_at)
-     VALUES (@id,@name,@role,@publicKey,@source,@x,@y,@place,@status,@action,@intent,@targetX,@targetY,@waypoints,@inventory,@life,@contributions,@friends,@paused,@lastActionAt,@createdAt)`,
+    sql: `INSERT INTO agents (id,name,role,public_key,source,x,y,place,status,action,intent,target_x,target_y,waypoints,inventory,life,contributions,friends,paused,last_action_at,created_at,browsing_url,browsing_title,browsing_at)
+     VALUES (@id,@name,@role,@publicKey,@source,@x,@y,@place,@status,@action,@intent,@targetX,@targetY,@waypoints,@inventory,@life,@contributions,@friends,@paused,@lastActionAt,@createdAt,@browsingUrl,@browsingTitle,@browsingAt)`,
     args: {
       ...a,
       waypoints: JSON.stringify(a.waypoints),
@@ -208,7 +217,8 @@ export async function saveAgent(a: Agent): Promise<void> {
   await db.execute({
     sql: `UPDATE agents SET name=@name, role=@role, x=@x, y=@y, place=@place, status=@status, action=@action, intent=@intent,
      target_x=@targetX, target_y=@targetY, waypoints=@waypoints, inventory=@inventory, life=@life, contributions=@contributions,
-     friends=@friends, paused=@paused, last_action_at=@lastActionAt WHERE id=@id`,
+     friends=@friends, paused=@paused, last_action_at=@lastActionAt, browsing_url=@browsingUrl, browsing_title=@browsingTitle,
+     browsing_at=@browsingAt WHERE id=@id`,
     args: {
       id: a.id,
       name: a.name,
@@ -227,7 +237,10 @@ export async function saveAgent(a: Agent): Promise<void> {
       contributions: a.contributions,
       friends: JSON.stringify(a.friends),
       paused: a.paused ? 1 : 0,
-      lastActionAt: a.lastActionAt
+      lastActionAt: a.lastActionAt,
+      browsingUrl: a.browsingUrl,
+      browsingTitle: a.browsingTitle,
+      browsingAt: a.browsingAt
     }
   });
 }

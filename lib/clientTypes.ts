@@ -15,6 +15,9 @@ export interface AgentDTO {
   contributions: number;
   friends: string[];
   paused: boolean;
+  browsingUrl: string | null;
+  browsingTitle: string | null;
+  browsingAt: number;
 }
 
 export interface FarmBedDTO {

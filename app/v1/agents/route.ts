@@ -63,7 +63,10 @@ export async function POST(req: Request) {
     friends: [],
     paused: false,
     lastActionAt: 0,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    browsingUrl: null,
+    browsingTitle: null,
+    browsingAt: 0
   };
   await insertAgent(agent);
   await insertEvent(id, agent.name, 'arrival', `${agent.name} arrived on the island as a new Spark, ready to work as a ${role}.`);

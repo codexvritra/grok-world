@@ -26,7 +26,10 @@ export async function GET() {
     life: a.life,
     contributions: a.contributions,
     friends: a.friends,
-    paused: a.paused
+    paused: a.paused,
+    browsingUrl: a.browsingUrl,
+    browsingTitle: a.browsingTitle,
+    browsingAt: a.browsingAt
   }));
 
   return NextResponse.json({

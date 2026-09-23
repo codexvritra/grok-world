@@ -12,3 +12,8 @@ export const BUILDING_ICONS: Record<string, string> = {
   farmhouse: '✿',
   workshop: '⚒'
 };
+
+/** Free, keyless screenshot thumbnail service (WordPress mshots) — client-safe (no server-only deps). */
+export function thumbnailUrl(pageUrl: string): string {
+  return `https://s0.wp.com/mshots/v1/${encodeURIComponent(pageUrl)}?w=600`;
+}

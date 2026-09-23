@@ -117,7 +117,10 @@ async function seedAgents(): Promise<string[]> {
       friends: [],
       paused: false,
       lastActionAt: 0,
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      browsingUrl: null,
+      browsingTitle: null,
+      browsingAt: 0
     };
     await insertAgent(agent);
     await insertEvent(agent.id, agent.name, 'arrival', `${agent.name} settled into the village as a ${s.role}.`);

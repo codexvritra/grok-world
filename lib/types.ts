@@ -36,6 +36,9 @@ export interface Agent {
   paused: boolean;
   lastActionAt: number;
   createdAt: number;
+  browsingUrl: string | null;
+  browsingTitle: string | null;
+  browsingAt: number;
 }
 
 export interface FarmBed {

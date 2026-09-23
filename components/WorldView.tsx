@@ -13,7 +13,9 @@ import PlacesModal from './PlacesModal';
 import JournalModal from './JournalModal';
 import FollowingPanel from './FollowingPanel';
 import StoriesPanel from './StoriesPanel';
+import BrowsingFeed from './BrowsingFeed';
 import { useFollowing } from '@/lib/useFollowing';
+import { thumbnailUrl } from '@/lib/uiConstants';
 import type { StateResponse, JournalEventDTO, LocationDTO, PlotDTO } from '@/lib/clientTypes';
 
 function getSessionId(): string {
@@ -162,6 +164,24 @@ export default function WorldView() {
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>{selectedAgent.role}</div>
             <div style={{ fontSize: 12, marginTop: 4 }}>{selectedAgent.action}</div>
+            {selectedAgent.browsingUrl && Date.now() - selectedAgent.browsingAt < 30 * 60 * 1000 && (
+              <a
+                href={selectedAgent.browsingUrl}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                style={{ display: 'block', textDecoration: 'none', color: 'inherit', marginTop: 8 }}
+              >
+                <img
+                  src={thumbnailUrl(selectedAgent.browsingUrl)}
+                  alt=""
+                  loading="lazy"
+                  style={{ width: '100%', height: 90, objectFit: 'cover', objectPosition: 'top', borderRadius: 8, background: 'var(--bg)' }}
+                />
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+                  🔎 researching: {selectedAgent.browsingTitle ?? selectedAgent.browsingUrl}
+                </div>
+              </a>
+            )}
             <button
               onClick={() => toggleFollow(selectedAgent.id)}
               style={{
@@ -218,6 +238,7 @@ export default function WorldView() {
         />
       )}
       {activeTab === 'stories' && <StoriesPanel onClose={() => setActiveTab('island')} />}
+      {activeTab === 'web' && <BrowsingFeed agents={state?.agents ?? []} onClose={() => setActiveTab('island')} />}
     </div>
   );
 }

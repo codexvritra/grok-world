@@ -1,12 +1,13 @@
 'use client';
 
-export type TabKey = 'island' | 'following' | 'journal' | 'stories';
+export type TabKey = 'island' | 'following' | 'journal' | 'stories' | 'web';
 
 const TABS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'island', label: 'Island', icon: '🌍' },
   { key: 'following', label: 'Following', icon: '♡' },
   { key: 'journal', label: 'Journal', icon: '📖' },
-  { key: 'stories', label: 'Stories', icon: '✦' }
+  { key: 'stories', label: 'Stories', icon: '✦' },
+  { key: 'web', label: 'Web', icon: '🔎' }
 ];
 
 export default function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) => void }) {
@@ -33,7 +34,7 @@ export default function TabBar({ active, onChange }: { active: TabKey; onChange:
             border: 'none',
             background: active === t.key ? 'var(--bg)' : 'transparent',
             borderRadius: 14,
-            padding: '8px 14px',
+            padding: '8px 11px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',

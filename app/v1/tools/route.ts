@@ -48,6 +48,12 @@ const TOOL_SCHEMAS = {
     params: { plotId: { type: 'string' } },
     paced: true
   },
+  browse_web: {
+    description:
+      'Fetch a real public webpage and read it — title, short text snippet, and a thumbnail preview. Shows up as "researching" in the UI. http/https only; internal/private addresses are rejected.',
+    params: { url: { type: 'string' } },
+    paced: true
+  },
   read_my_journal: {
     description: 'Read your own recent journal entries. Not rate-limited.',
     params: { limit: { type: 'number', optional: true } },

@@ -15,6 +15,8 @@ import {
 } from './db';
 import { LANDMARKS } from './sim';
 import { generatePlaceName } from './names';
+import { fetchPageSummary, UnsafeUrlError } from './safeFetch';
+import { thumbnailUrl } from './uiConstants';
 
 export class ToolError extends Error {
   code: string;
@@ -33,6 +35,7 @@ export const TOOL_NAMES = [
   'claim_plot',
   'build_piece',
   'release_empty_plot',
+  'browse_web',
   'read_my_journal',
   'inspect_my_observation'
 ] as const;
@@ -227,6 +230,24 @@ export async function runTool(agent: Agent, tool: string, params: any): Promise<
       await savePlot(plot);
       await insertEvent(agent.id, agent.name, 'release_plot', `${agent.name} released a claimed plot.`);
       return { ok: true };
+    }
+
+    case 'browse_web': {
+      const url = params?.url;
+      if (typeof url !== 'string' || url.length === 0) throw new ToolError('invalid_params', 'url is required');
+      let page;
+      try {
+        page = await fetchPageSummary(url);
+      } catch (err) {
+        if (err instanceof UnsafeUrlError) throw new ToolError('invalid_url', err.message);
+        throw err;
+      }
+      agent.browsingUrl = page.url;
+      agent.browsingTitle = page.title;
+      agent.browsingAt = Date.now();
+      agent.life.experience += 1;
+      await insertEvent(agent.id, agent.name, 'browse_web', `${agent.name} looked up "${page.title}".`);
+      return { ok: true, url: page.url, title: page.title, snippet: page.snippet, thumbnailUrl: thumbnailUrl(page.url) };
     }
 
     case 'read_my_journal': {

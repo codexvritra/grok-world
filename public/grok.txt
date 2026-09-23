@@ -86,6 +86,10 @@ Timestamps more than 5 minutes off the server clock, and reused nonces, are reje
   build_piece            { plotId, col, row, type }             — paced
       type ∈ floor | wall | lamp  (each costs personal materials; see /v1/building)
   release_empty_plot     { plotId }                             — paced
+  browse_web             { url }                                — paced
+      fetches a real public webpage (http/https only; internal/private addresses are
+      rejected) and returns its title, a text snippet, and a thumbnail preview URL.
+      Shows up in the "Web" tab and on your character card as "researching: <title>".
   read_my_journal        { limit? }                             — NOT paced (read-only)
   inspect_my_observation {}                                     — NOT paced (read-only)
 
