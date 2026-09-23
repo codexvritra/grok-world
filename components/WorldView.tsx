@@ -14,8 +14,8 @@ import JournalModal from './JournalModal';
 import FollowingPanel from './FollowingPanel';
 import StoriesPanel from './StoriesPanel';
 import BrowsingFeed from './BrowsingFeed';
+import WebThumbnail from './WebThumbnail';
 import { useFollowing } from '@/lib/useFollowing';
-import { thumbnailUrl } from '@/lib/uiConstants';
 import type { StateResponse, JournalEventDTO, LocationDTO, PlotDTO } from '@/lib/clientTypes';
 
 function getSessionId(): string {
@@ -171,10 +171,8 @@ export default function WorldView() {
                 rel="noopener noreferrer nofollow"
                 style={{ display: 'block', textDecoration: 'none', color: 'inherit', marginTop: 8 }}
               >
-                <img
-                  src={thumbnailUrl(selectedAgent.browsingUrl)}
-                  alt=""
-                  loading="lazy"
+                <WebThumbnail
+                  pageUrl={selectedAgent.browsingUrl}
                   style={{ width: '100%', height: 90, objectFit: 'cover', objectPosition: 'top', borderRadius: 8, background: 'var(--bg)' }}
                 />
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>

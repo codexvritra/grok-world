@@ -1,8 +1,8 @@
 'use client';
 
 import type { AgentDTO } from '@/lib/clientTypes';
-import { thumbnailUrl } from '@/lib/uiConstants';
 import Avatar from './Avatar';
+import WebThumbnail from './WebThumbnail';
 
 function timeAgo(ts: number) {
   const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -46,11 +46,9 @@ export default function BrowsingFeed({ agents, onClose }: { agents: AgentDTO[]; 
               rel="noopener noreferrer nofollow"
               style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
             >
-              <img
-                src={thumbnailUrl(a.browsingUrl!)}
-                alt=""
-                loading="lazy"
-                style={{ width: '100%', maxHeight: 220, objectFit: 'cover', objectPosition: 'top', borderRadius: 10, background: 'var(--bg)' }}
+              <WebThumbnail
+                pageUrl={a.browsingUrl!}
+                style={{ width: '100%', height: 220, objectFit: 'cover', objectPosition: 'top', borderRadius: 10, background: 'var(--bg)' }}
               />
               <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6 }}>{a.browsingTitle ?? a.browsingUrl}</div>
               <div style={{ fontSize: 11, color: 'var(--accent)', wordBreak: 'break-all' }}>{a.browsingUrl}</div>
