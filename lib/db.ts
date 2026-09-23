@@ -212,13 +212,14 @@ export async function insertAgent(a: Agent): Promise<void> {
   });
 }
 
+// Deliberately does NOT touch browsing_url/browsing_title/browsing_at — see
+// updateAgentBrowsing() below for why.
 export async function saveAgent(a: Agent): Promise<void> {
   await ensureInit();
   await db.execute({
     sql: `UPDATE agents SET name=@name, role=@role, x=@x, y=@y, place=@place, status=@status, action=@action, intent=@intent,
      target_x=@targetX, target_y=@targetY, waypoints=@waypoints, inventory=@inventory, life=@life, contributions=@contributions,
-     friends=@friends, paused=@paused, last_action_at=@lastActionAt, browsing_url=@browsingUrl, browsing_title=@browsingTitle,
-     browsing_at=@browsingAt WHERE id=@id`,
+     friends=@friends, paused=@paused, last_action_at=@lastActionAt WHERE id=@id`,
     args: {
       id: a.id,
       name: a.name,
@@ -237,11 +238,24 @@ export async function saveAgent(a: Agent): Promise<void> {
       contributions: a.contributions,
       friends: JSON.stringify(a.friends),
       paused: a.paused ? 1 : 0,
-      lastActionAt: a.lastActionAt,
-      browsingUrl: a.browsingUrl,
-      browsingTitle: a.browsingTitle,
-      browsingAt: a.browsingAt
+      lastActionAt: a.lastActionAt
     }
+  });
+}
+
+// A narrow, standalone UPDATE (not folded into saveAgent's full-row write)
+// because sim.tick() runs concurrently with /v1/action requests — both do a
+// read-full-agent -> mutate -> write-full-agent cycle, so whichever finishes
+// last wins and silently discards the other's changes. tick() never touches
+// browsing state, so keeping browsing_url/title/at out of its blanket
+// saveAgent() writes means only this function ever sets them, closing that
+// race for these three columns without a larger rework of how agent state
+// gets persisted.
+export async function updateAgentBrowsing(agentId: string, url: string, title: string, at: number): Promise<void> {
+  await ensureInit();
+  await db.execute({
+    sql: 'UPDATE agents SET browsing_url=?, browsing_title=?, browsing_at=? WHERE id=?',
+    args: [url, title, at, agentId]
   });
 }
 

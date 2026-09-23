@@ -11,7 +11,8 @@ import {
   savePlot,
   getPlots,
   getAgentJournal,
-  getAgents
+  getAgents,
+  updateAgentBrowsing
 } from './db';
 import { LANDMARKS } from './sim';
 import { generatePlaceName } from './names';
@@ -242,10 +243,14 @@ export async function runTool(agent: Agent, tool: string, params: any): Promise<
         if (err instanceof UnsafeUrlError) throw new ToolError('invalid_url', err.message);
         throw err;
       }
+      const browsedAt = Date.now();
       agent.browsingUrl = page.url;
       agent.browsingTitle = page.title;
-      agent.browsingAt = Date.now();
+      agent.browsingAt = browsedAt;
       agent.life.experience += 1;
+      // Written directly (not via the caller's later saveAgent(agent) call) —
+      // see updateAgentBrowsing's doc comment for why.
+      await updateAgentBrowsing(agent.id, page.url, page.title, browsedAt);
       await insertEvent(agent.id, agent.name, 'browse_web', `${agent.name} looked up "${page.title}".`);
       return { ok: true, url: page.url, title: page.title, snippet: page.snippet, thumbnailUrl: thumbnailUrl(page.url) };
     }
