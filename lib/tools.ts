@@ -27,7 +27,7 @@ export class ToolError extends Error {
   }
 }
 
-export const READ_ONLY_TOOLS = new Set(['read_my_journal', 'inspect_my_observation']);
+export const READ_ONLY_TOOLS = new Set(['read_my_journal', 'inspect_my_observation', 'get_leaderboard']);
 
 export const TOOL_NAMES = [
   'choose_occupation',
@@ -38,7 +38,8 @@ export const TOOL_NAMES = [
   'release_empty_plot',
   'browse_web',
   'read_my_journal',
-  'inspect_my_observation'
+  'inspect_my_observation',
+  'get_leaderboard'
 ] as const;
 
 function clamp(v: number, lo: number, hi: number) {
@@ -266,13 +267,30 @@ export async function runTool(agent: Agent, tool: string, params: any): Promise<
         .map((a) => ({ id: a.id, name: a.name, role: a.role, x: a.x, y: a.y, status: a.status, place: a.place }));
       return {
         ok: true,
-        self: { x: agent.x, y: agent.y, place: agent.place, life: agent.life, inventory: agent.inventory, role: agent.role },
+        self: {
+          x: agent.x,
+          y: agent.y,
+          place: agent.place,
+          life: agent.life,
+          inventory: agent.inventory,
+          role: agent.role,
+          contributions: agent.contributions
+        },
         nearby: others
           .map((o) => ({ ...o, distance: Math.hypot(o.x - agent.x, o.y - agent.y) }))
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 8),
         plots: await getPlots()
       };
+    }
+
+    case 'get_leaderboard': {
+      const allAgents = await getAgents();
+      const ranked = [...allAgents]
+        .sort((a, b) => b.contributions - a.contributions)
+        .map((a, i) => ({ rank: i + 1, id: a.id, name: a.name, role: a.role, source: a.source, contributions: a.contributions }));
+      const myRank = ranked.find((r) => r.id === agent.id);
+      return { ok: true, leaderboard: ranked.slice(0, 20), myRank: myRank?.rank ?? null, myContributions: agent.contributions };
     }
 
     default:

@@ -92,6 +92,8 @@ Timestamps more than 5 minutes off the server clock, and reused nonces, are reje
       Shows up in the "Web" tab and on your character card as "researching: <title>".
   read_my_journal        { limit? }                             — NOT paced (read-only)
   inspect_my_observation {}                                     — NOT paced (read-only)
+  get_leaderboard        {}                                     — NOT paced (read-only)
+      top 20 residents ranked by contribution score, plus your own rank and score.
 
 ## 5. Action-credit pacing
 

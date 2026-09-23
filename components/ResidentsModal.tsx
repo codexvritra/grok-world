@@ -18,6 +18,8 @@ function LifeBar({ label, value }: { label: string; value: number }) {
   );
 }
 
+const RANK_MEDAL: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
+
 export default function ResidentsModal({
   agents,
   following,
@@ -30,22 +32,36 @@ export default function ResidentsModal({
   onClose: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [sortByRank, setSortByRank] = useState(true);
+
+  const ordered = sortByRank ? [...agents].sort((a, b) => b.contributions - a.contributions) : agents;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>Residents ({agents.length})</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 18, color: 'var(--muted)' }}>
             ✕
           </button>
         </div>
-        {agents.map((a) => (
+        <button
+          onClick={() => setSortByRank((v) => !v)}
+          style={{ background: 'none', border: 'none', color: 'var(--accent)', fontSize: 11, fontWeight: 600, padding: 0, marginBottom: 8 }}
+        >
+          {sortByRank ? '🏆 Sorted by contribution — show default order' : 'Show leaderboard 🏆'}
+        </button>
+        {ordered.map((a, i) => (
           <div key={a.id} style={{ borderBottom: '1px solid var(--card-border)', padding: '10px 0' }}>
             <button
               onClick={() => setExpanded(expanded === a.id ? null : a.id)}
               style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, background: 'none', border: 'none', textAlign: 'left' }}
             >
+              {sortByRank && (
+                <span style={{ width: 20, textAlign: 'center', fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
+                  {RANK_MEDAL[i + 1] ?? i + 1}
+                </span>
+              )}
               <Avatar role={a.role} size={30} external={a.source === 'external'} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>
@@ -54,7 +70,10 @@ export default function ResidentsModal({
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.role}</div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.status}</div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'var(--muted)' }}>{a.status}</div>
+                {sortByRank && <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)' }}>{Math.round(a.contributions)} pts</div>}
+              </div>
             </button>
             {expanded === a.id && (
               <div style={{ marginTop: 8, paddingLeft: 40 }}>

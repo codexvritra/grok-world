@@ -63,6 +63,11 @@ const TOOL_SCHEMAS = {
     description: 'Observe your surroundings: nearby residents, your own state, and current plots. Not rate-limited.',
     params: {},
     paced: false
+  },
+  get_leaderboard: {
+    description: 'See the top 20 residents ranked by contribution score, plus your own rank. Not rate-limited.',
+    params: {},
+    paced: false
   }
 };
 
